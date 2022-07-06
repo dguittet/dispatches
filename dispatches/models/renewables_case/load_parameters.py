@@ -47,7 +47,7 @@ h2_price_per_kg = 2
 # sizes
 fixed_wind_mw = 847
 wind_mw_ub = 10000
-fixed_batt_mw = 5761
+fixed_batt_mw = 4874
 fixed_pem_mw = 643
 turb_p_mw = 1
 valve_cv = 0.00001
@@ -63,18 +63,8 @@ air_h2_ratio = 10.76
 compressor_dp = 24.01
 max_pressure_bar = 700
 
-# load RTS-GMLC data
-rts_gmlc_dir = Path("/Users/dguittet/Projects/Dispatches/workspace/deterministic_with_network_simulation_output_year")
-# rts_gmlc_dir = Path("/Users/dguittet/Projects/Dispatches/workspace/prescient_runs/simulate_with_network_with_uncertainty_w_10_reserves")
-# rts_gmlc_dir = Path("/Users/dguittet/Projects/Dispatches/workspace/prescient_runs/simulate_with_network_with_uncertainty_w_10_reserves_1000_shortfall")
-# rts_gmlc_dir = Path("/Users/dguittet/Projects/Dispatches/workspace/prescient_runs/simulate_with_network_with_uncertainty_w_10_reserves_500_shortfall")
-# rts_gmlc_dir = Path("/Users/dguittet/Projects/Dispatches/workspace/prescient_runs/simulate_with_network_with_uncertainty_w_15_reserves_1000_shortfall")
-# rts_gmlc_dir = Path("/Users/dguittet/Projects/Dispatches/workspace/prescient_runs/simulate_with_network_with_uncertainty_w_15_reserves_500_shortfall")
-
-if rts_gmlc_dir.exists():
-    df = pd.read_csv(rts_gmlc_dir / "Wind_Thermal_Dispatch.csv")
-else:
-    df = pd.read_csv(re_case_dir / "data" / "Wind_Thermal_Dispatch.csv")
+# load pre-compiled RTS-GMLC output data
+df = pd.read_csv(re_case_dir / "data" / "Wind_Thermal_Dispatch.csv")
 df["DateTime"] = df['Unnamed: 0']
 df.drop('Unnamed: 0', inplace=True, axis=1)
 df.index = pd.to_datetime(df["DateTime"])
