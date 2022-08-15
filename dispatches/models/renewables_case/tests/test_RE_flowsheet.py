@@ -13,6 +13,7 @@
 #
 #################################################################################
 import pytest
+import platform
 from idaes.core.util.model_statistics import degrees_of_freedom
 
 from dispatches.models.nuclear_case.unit_models.hydrogen_tank import HydrogenTank as DetailedHydrogenTank
@@ -31,6 +32,16 @@ def input_params():
         prices_used = copy.copy(price)
         prices_used[prices_used > 200] = 200
     params['DA_LMPs'] = prices_used
+
+    # wind resource data from example Wind Toolkit file
+    wind_data = SRW_to_wind_data(re_case_dir / 'data' / '44.21_-101.94_windtoolkit_2012_60min_80m.srw')
+    wind_speeds = [wind_data['data'][i][2] for i in range(8760)]
+    wind_resource = {t:
+                        {'wind_resource_config': {
+                            'resource_speed': [wind_speeds[t]]
+                        }
+                    } for t in range(8760)}
+    params["wind_resource"] = wind_resource
     return params
 
 def test_h2_valve_opening():
@@ -88,7 +99,7 @@ def test_h2_valve_opening():
     assert value(m.fs.tank_valve.valve_opening[0]) == pytest.approx(0.83331, rel=1e-3)
 
 
-def test_create_model():
+def test_create_model(input_params):
     tank_type = "simple"
     m = create_model(
         wind_mw=fixed_wind_mw,
@@ -97,7 +108,7 @@ def test_create_model():
         tank_type=tank_type,
         tank_length_m=fixed_tank_size,
         turb_inlet_bar=pem_bar,
-        wind_resource_config=wind_resource[0]['wind_resource_config']
+        wind_resource_config=input_params['wind_resource'][0]['wind_resource_config']
     )
 
     assert hasattr(m.fs, "windpower")
@@ -124,15 +135,15 @@ def test_create_model():
     assert value(m.fs.mixer.air_feed.mole_frac_comp[0, "hydrogen"]) == 2e-4
 
     dof = degrees_of_freedom(m)
-    assert dof == 9
+    assert dof == 10
 
 
 def test_wind_battery_optimize(input_params):
     mp = wind_battery_optimize(n_time_points=7 * 24, input_params=input_params, verbose=True)
-    assert value(mp.pyomo_model.NPV) == pytest.approx(1341693890, rel=1e-3)
-    assert value(mp.pyomo_model.annual_revenue) == pytest.approx(191088484, rel=1e-3)
+    assert value(mp.pyomo_model.NPV) == pytest.approx(1001068228, rel=1e-3)
+    assert value(mp.pyomo_model.annual_revenue) == pytest.approx(168691601, rel=1e-3)
     blks = mp.get_active_process_blocks()
-    assert value(blks[0].fs.battery.nameplate_power) == pytest.approx(1329837, rel=1e-3)
+    assert value(blks[0].fs.battery.nameplate_power) == pytest.approx(1326779, rel=1e-3)
     plot_results(*record_results(mp))
 
 
@@ -159,10 +170,11 @@ def test_wind_battery_pem_tank_turb_optimize_simple(input_params):
     assert design_res['NPV'] == pytest.approx(2344545889, rel=1e-2)
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Platform differences in IPOPT solve")
 def test_wind_battery_pem_tank_turb_optimize_detailed(input_params):
     input_params['h2_price_per_kg'] = 2.0
     input_params['tank_type'] = 'detailed'
-    design_res = wind_battery_pem_tank_turb_optimize(6 * 24, input_params=input_params, verbose=False, plot=False)
+    design_res = wind_battery_pem_tank_turb_optimize(6 * 24, input_params=input_params, verbose=True, plot=False)
     assert design_res['batt_mw'] == pytest.approx(4874, rel=1e-2)
     assert design_res['pem_mw'] == pytest.approx(0, abs=3)
     assert design_res['tank_kgH2'] == pytest.approx(0, abs=3)
@@ -171,4 +183,3 @@ def test_wind_battery_pem_tank_turb_optimize_detailed(input_params):
     assert design_res['annual_rev_h2'] == pytest.approx(2634, abs=5e3)
     assert design_res['annual_rev_E'] == pytest.approx(531566543, rel=1e-2)
     assert design_res['NPV'] == pytest.approx(2344545889, rel=1e-2)
-

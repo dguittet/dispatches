@@ -144,7 +144,7 @@ def initialize_fs(m, tank_type, verbose=False):
 
     if tank_type == "simple":
         m.fs.h2_tank.outlet_to_turbine.flow_mol[0].fix(value(m.fs.h2_tank.inlet.flow_mol[0]))
-        m.fs.h2_tank.outlet_to_pipeline.flow_mol[0].fix()
+        m.fs.h2_tank.outlet_to_pipeline.flow_mol[0].fix(0)
         m.fs.h2_tank.tank_holdup_previous.fix(0)
         m.fs.h2_tank.initialize(outlvl=outlvl)
         m.fs.h2_tank.outlet_to_turbine.flow_mol[0].unfix()
@@ -411,8 +411,7 @@ def wind_battery_pem_tank_turb_optimize(n_time_points, input_params, verbose=Fal
 
     opt = pyo.SolverFactory('ipopt')
 
-    opt.options['max_iter'] = 100000
-    opt.options['tol'] = 1e-6
+    opt.options['max_iter'] = 10000
 
     if verbose:
         solve_log = idaeslog.getInitLogger("infeasibility", idaeslog.INFO, tag="properties")
@@ -570,5 +569,5 @@ def wind_battery_pem_tank_turb_optimize(n_time_points, input_params, verbose=Fal
 
 if __name__ == "__main__":
     default_input_params['wind_mw'] = 200
-    des_res = wind_battery_pem_tank_turb_optimize(n_time_points=7 * 24, input_params=default_input_params, verbose=False, plot=True)
+    des_res = wind_battery_pem_tank_turb_optimize(n_time_points=6 * 24, input_params=default_input_params, verbose=False, plot=True)
     print(des_res)

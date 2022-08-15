@@ -1,7 +1,22 @@
+#################################################################################
+# DISPATCHES was produced under the DOE Design Integration and Synthesis
+# Platform to Advance Tightly Coupled Hybrid Energy Systems program (DISPATCHES),
+# and is copyright (c) 2022 by the software owners: The Regents of the University
+# of California, through Lawrence Berkeley National Laboratory, National
+# Technology & Engineering Solutions of Sandia, LLC, Alliance for Sustainable
+# Energy, LLC, Battelle Energy Alliance, LLC, University of Notre Dame du Lac, et
+# al. All rights reserved.
+#
+# Please see the files COPYRIGHT.md and LICENSE.md for full copyright and license
+# information, respectively. Both files are also available online at the URL:
+# "https://github.com/gmlc-dispatches/dispatches".
+#
+#################################################################################
 from prescient.simulator import Prescient
 from types import ModuleType
-from optparse import OptionParser
+from argparse import ArgumentParser
 from wind_battery_double_loop import MultiPeriodWindBattery
+import idaes
 from idaes.apps.grid_integration import (
     Tracker,
     DoubleLoopCoordinator,
@@ -13,81 +28,86 @@ from idaes.apps.grid_integration.model_data import (
     RenewableGeneratorModelData,
     ThermalGeneratorModelData,
 )
+from idaes import __version__
 import pyomo.environ as pyo
+from pyomo.common.fileutils import this_file_dir
+from pyomo.common.dependencies import check_min_version
 import pandas as pd
-import os
+from pathlib import Path
+from dispatches_sample_data import rts_gmlc
 
-from parametrized_bidder import ParametrizedBidder, FileForecaster, VaryingParametrizedBidder
+if not check_min_version(idaes, '2.0.0.a4'):
+    raise EnvironmentError("This notebook requires the 2.0.0.a4 pre-release of idaes-pse, which can be found here: https://github.com/dguittet/idaes-pse/tree/2.0.0.a4")
 
-this_file_path = pyo.common.fileutils.this_file_dir()
+this_file_path = Path(this_file_dir())
 
 usage = "Run double loop simulation with RE model."
-parser = OptionParser(usage)
+parser = ArgumentParser(usage)
 
-parser.add_option(
+parser.add_argument(
     "--sim_id",
     dest="sim_id",
     help="Indicate the simulation ID.",
     action="store",
-    type="int",
+    type=int,
     default=0,
 )
 
-parser.add_option(
+parser.add_argument(
     "--wind_pmax",
     dest="wind_pmax",
     help="Set wind capacity in MW.",
     action="store",
-    type="float",
+    type=float,
     default=200.0,
 )
 
-parser.add_option(
+parser.add_argument(
     "--battery_energy_capacity",
     dest="battery_energy_capacity",
     help="Set the battery energy capacity in MWh.",
     action="store",
-    type="float",
+    type=float,
     default=100.0,
 )
 
-parser.add_option(
+parser.add_argument(
     "--battery_pmax",
     dest="battery_pmax",
     help="Set the battery power capacity in MW.",
     action="store",
-    type="float",
+    type=float,
     default=25.0,
 )
 
-parser.add_option(
+parser.add_argument(
     "--n_scenario",
     dest="n_scenario",
     help="Set the number of price scenarios.",
     action="store",
-    type="int",
+    type=int,
     default=3,
 )
 
-parser.add_option(
+parser.add_argument(
     "--reserve_factor",
     dest="reserve_factor",
     help="Set the reserve factor.",
     action="store",
-    type="float",
+    type=float,
     default=0.0,
 )
 
-parser.add_option(
+parser.add_argument(
     "--participation_mode",
     dest="participation_mode",
     help="Indicate the market participation mode.",
     action="store",
-    type="str",
+    type=str,
     default="Bid",
 )
 
-(options, args) = parser.parse_args()
+options = parser.parse_args()
 
 sim_id = options.sim_id
 wind_pmax = options.wind_pmax
@@ -97,7 +117,7 @@ n_scenario = options.n_scenario
 participation_mode = options.participation_mode
 reserve_factor = options.reserve_factor
 
-allowed_participation_modes = {"Bid", "SelfSchedule", "ParametrizedBid", "VaryingParametrizedBid"}
+allowed_participation_modes = {"Bid", "SelfSchedule"}
 if participation_mode not in allowed_participation_modes:
     raise ValueError(
         f"The provided participation mode {participation_mode} is not supported."
@@ -107,18 +127,20 @@ p_min = 0
 default_wind_bus = 309
 bus_name = "Carter"
 wind_generator = "309_WIND_1"
-capacity_factor_df = pd.read_csv(os.path.join(this_file_path, "capacity_factors.csv"))
-gen_capacity_factor = list(capacity_factor_df[wind_generator])[23:]
+start_date = "01-02-2020"
 
-file_forecaster = FileForecaster('/Users/dguittet/Projects/Dispatches/workspace/deterministic_with_network_simulation_output_year/Wind_Thermal_Dispatch.csv')
+prescient_outputs_df = pd.read_csv(this_file_path / "data" / "Wind_Thermal_Dispatch.csv")
+prescient_outputs_df.index = pd.to_datetime(prescient_outputs_df['Unnamed: 0'])
+prescient_outputs_df = prescient_outputs_df[prescient_outputs_df.index >= pd.Timestamp(f'{start_date} 00:00:00')]
+gen_capacity_factor = prescient_outputs_df[f"{wind_generator}-RTCF"].values.tolist()
 
 # NOTE: `rts_gmlc_data_dir` should point to a directory containing RTS-GMLC scenarios
-rts_gmlc_data_dir = "/Users/dguittet/Projects/Dispatches/Prescient/downloads/rts_gmlc/RTS-GMLC/RTS_Data/SourceData"
-output_dir = f"sim_{sim_id}_{participation_mode[:3]}_results"
+rts_gmlc_data_dir = rts_gmlc.source_data_path
+output_dir = Path(f"sim_{sim_id}_results")
 
 solver = pyo.SolverFactory("xpress_direct")
 
-if "Bid" in participation_mode:
+if participation_mode == "Bid":
     thermal_generator_params = {
         "gen_name": wind_generator,
         "bus": bus_name,
@@ -239,24 +261,6 @@ elif participation_mode == "SelfSchedule":
         solver=solver,
         forecaster=backcaster,
     )
-elif participation_mode == "ParametrizedBid":
-    bidder_object = ParametrizedBidder(
-        bidding_model_object=mp_wind_battery_bid,
-        day_ahead_horizon=day_ahead_horizon,
-        real_time_horizon=real_time_horizon,
-        n_scenario=n_scenario,
-        solver=solver,
-        forecaster=file_forecaster
-    )
-elif participation_mode == "VaryingParametrizedBid":
-    bidder_object = VaryingParametrizedBidder(
-        bidding_model_object=mp_wind_battery_bid,
-        day_ahead_horizon=day_ahead_horizon,
-        real_time_horizon=real_time_horizon,
-        n_scenario=n_scenario,
-        solver=solver,
-        forecaster=file_forecaster
-    )
 
 ################################################################################
 ################################# Tracker ######################################
@@ -325,7 +329,7 @@ prescient_options = {
     "simulate_out_of_sample": True,
     "run_sced_with_persistent_forecast_errors": True,
     "output_directory": output_dir,
-    "start_date": "01-02-2020",
+    "start_date": start_date,
     "num_days": 364,
     "sced_horizon": 4,
     "ruc_horizon": 48,
@@ -347,5 +351,5 @@ prescient_options = {
 Prescient().simulate(**prescient_options)
 
 # write options into the result folder
-with open(os.path.join(output_dir, "sim_options.txt"), "w") as f:
+with open(output_dir / "sim_options.txt", "w") as f:
     f.write(str(options))

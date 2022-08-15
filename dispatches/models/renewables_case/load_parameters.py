@@ -30,6 +30,7 @@ H2_mass = 2.016 / 1000
 wind_cap_cost = 1550
 wind_op_cost = 43
 batt_cap_cost = 300 * 4                     # per kW for 4 hour battery
+batt_rep_cost_kwh = batt_cap_cost * 0.5 / 4 # assume 50% price w/ discounting and 4 hour battery
 pem_cap_cost = 1630
 pem_op_cost = 47.9
 pem_var_cost = 1.3/1000                     # per kWh
@@ -46,7 +47,7 @@ h2_price_per_kg = 2
 # sizes
 fixed_wind_mw = 847
 wind_mw_ub = 10000
-fixed_batt_mw = 5761
+fixed_batt_mw = 4874
 fixed_pem_mw = 643
 turb_p_mw = 1
 valve_cv = 0.00001
@@ -62,18 +63,8 @@ air_h2_ratio = 10.76
 compressor_dp = 24.01
 max_pressure_bar = 700
 
-# load RTS-GMLC data
-rts_gmlc_dir = Path("/Users/dguittet/Projects/Dispatches/workspace/deterministic_with_network_simulation_output_year")
-# rts_gmlc_dir = Path("/Users/dguittet/Projects/Dispatches/workspace/prescient_runs/simulate_with_network_with_uncertainty_w_10_reserves")
-# rts_gmlc_dir = Path("/Users/dguittet/Projects/Dispatches/workspace/prescient_runs/simulate_with_network_with_uncertainty_w_10_reserves_1000_shortfall")
-# rts_gmlc_dir = Path("/Users/dguittet/Projects/Dispatches/workspace/prescient_runs/simulate_with_network_with_uncertainty_w_10_reserves_500_shortfall")
-# rts_gmlc_dir = Path("/Users/dguittet/Projects/Dispatches/workspace/prescient_runs/simulate_with_network_with_uncertainty_w_15_reserves_1000_shortfall")
-# rts_gmlc_dir = Path("/Users/dguittet/Projects/Dispatches/workspace/prescient_runs/simulate_with_network_with_uncertainty_w_15_reserves_500_shortfall")
-
-if rts_gmlc_dir.exists():
-    df = pd.read_csv(rts_gmlc_dir / "Wind_Thermal_Dispatch.csv")
-else:
-    df = pd.read_csv(re_case_dir / "data" / "Wind_Thermal_Dispatch.csv")
+# load pre-compiled RTS-GMLC output data
+df = pd.read_csv(re_case_dir / "data" / "Wind_Thermal_Dispatch.csv")
 df["DateTime"] = df['Unnamed: 0']
 df.drop('Unnamed: 0', inplace=True, axis=1)
 df.index = pd.to_datetime(df["DateTime"])
@@ -111,7 +102,7 @@ N = 30                                      # years
 PA = ((1+i)**N - 1)/(i*(1+i)**N)            # present value / annuity = 1 / CRF
 
 # wind resource data from example Wind Toolkit file
-wind_data = SRW_to_wind_data(re_case_dir / '44.21_-101.94_windtoolkit_2012_60min_80m.srw')
+wind_data = SRW_to_wind_data(re_case_dir / 'data' / '44.21_-101.94_windtoolkit_2012_60min_80m.srw')
 wind_speeds = [wind_data['data'][i][2] for i in range(8760)]
 
 wind_resource = {t:

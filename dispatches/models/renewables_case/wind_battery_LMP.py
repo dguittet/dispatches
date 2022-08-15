@@ -62,6 +62,10 @@ def wind_battery_om_costs(m):
         expr=m.fs.windpower.system_capacity * m.fs.windpower.op_cost / 8760,
         doc="total fixed cost of wind in $/hr",
     )
+    m.fs.battery.var_cost = pyo.Expression(
+        expr=m.fs.battery.degradation_rate * (m.fs.battery.energy_throughput[0] - m.fs.battery.initial_energy_throughput) * batt_rep_cost_kwh,
+        doc="variable operating of the battery $/kWh"
+    )
 
 
 def initialize_mp(m, verbose=False):
@@ -216,11 +220,19 @@ def wind_battery_optimize(n_time_points, input_params, verbose=False):
     for blk in blks:
         blk_wind = blk.fs.windpower
         blk_battery = blk.fs.battery
+        
+        # add operating costs
+        blk_wind.op_total_cost = Expression(
+            expr=blk_wind.system_capacity * blk_wind.op_cost / 8760
+        )
+
         blk.lmp_signal = pyo.Param(default=0, mutable=True)
         blk.revenue = (
             blk.lmp_signal * (blk.fs.splitter.grid_elec[0] + blk_battery.elec_out[0])
         )
-        blk.profit = pyo.Expression(expr=blk.revenue - blk_wind.op_total_cost)
+        blk.profit = pyo.Expression(expr=blk.revenue 
+                                         - blk_wind.op_total_cost
+                                         - blk_battery.var_cost)
 
     for (i, blk) in enumerate(blks):
         blk.lmp_signal.set_value(input_params['DA_LMPs'][i] * 1e-3) 
