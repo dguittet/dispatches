@@ -16,6 +16,20 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
+def read_prescient_file(filepath):
+    df = pd.read_csv(filepath)
+    if 'Minute' in df.columns:
+        df['Datetime'] = pd.to_datetime(df['Date'].astype('str') + " " + df['Hour'].astype('str') + ":" + df['Minute'].astype('str'), format='%Y-%m-%d %H:%M')
+        df = df.drop(['Date', 'Hour', 'Minute'], axis=1)
+    else:
+        df['Datetime'] = pd.to_datetime(df['Date'].astype('str') + " " + df['Hour'].astype('str') + ":00", format='%Y-%m-%d %H:%M')
+        df = df.drop(['Date', 'Hour'], axis=1)
+    
+    df = df.set_index(pd.DatetimeIndex(df['Datetime']))
+    df = df.drop(['Datetime'], axis=1)
+    return df
+
+
 def read_prescient_outputs(output_dir, source_dir, gen_name=None):
     """
     Read the bus information, bus LMPs, and renewables output detail CSVs from Prescient simulations
@@ -27,36 +41,25 @@ def read_prescient_outputs(output_dir, source_dir, gen_name=None):
     source_dir = Path(source_dir)
     output_dir = Path(output_dir)
 
-    summary = pd.read_csv(output_dir / "hourly_summary.csv")
-    summary['Datetime'] = pd.to_datetime(summary['Date'].astype('str') + " " + summary['Hour'].astype('str') + ":00", format='%Y-%m-%d %H:%M')
-    summary = summary.set_index(pd.DatetimeIndex(summary['Datetime']))
-    summary = summary.drop(['Date', 'Hour', 'Datetime'], axis=1)
+    summary = read_prescient_file(output_dir / "hourly_summary.csv")
     
-    bus_detail_df = pd.read_csv(output_dir / "bus_detail.csv")
+    bus_detail_df = read_prescient_file(output_dir / "bus_detail.csv")
     bus_detail_df['LMP'] = bus_detail_df['LMP'].astype('float64')
     bus_detail_df['LMP DA'] = bus_detail_df['LMP DA'].astype('float64')
-    bus_detail_df['Datetime'] = pd.to_datetime(bus_detail_df['Date'].astype('str') + " " + bus_detail_df['Hour'].astype('str') + ":" + bus_detail_df['Minute'].astype('str'), format='%Y-%m-%d %H:%M')
-    bus_detail_df = bus_detail_df.set_index(pd.DatetimeIndex(bus_detail_df['Datetime']))
-    bus_detail_df = bus_detail_df.drop(['Date', 'Hour', 'Minute', 'Datetime'], axis=1)
+    bus_detail_df = bus_detail_df.rename(columns={'Demand': 'BusDemand', 'Overgeneration': 'BusOvergeneration'})
 
     summary = pd.merge(summary, bus_detail_df, how='outer', on=['Datetime'])
 
-    renewables_df = pd.read_csv(output_dir / "renewables_detail.csv")
-    thermal_df = pd.read_csv(output_dir / 'thermal_detail.csv')
+    renewables_df = read_prescient_file(output_dir / "renewables_detail.csv")
+    thermal_df = read_prescient_file(output_dir / 'thermal_detail.csv')
 
     load_renewables = gen_name == None or gen_name in renewables_df.Generator.unique()
     load_thermal = gen_name == None or gen_name in thermal_df.Generator.unique()
     
     if load_renewables:
-        renewables_df['Datetime'] = pd.to_datetime(renewables_df['Date'].astype('str') + " " + renewables_df['Hour'].astype('str') + ":" + renewables_df['Minute'].astype('str'), format='%Y-%m-%d %H:%M')
-        renewables_df = renewables_df.set_index(pd.DatetimeIndex(renewables_df['Datetime']))
-        renewables_df = renewables_df.drop(['Date', 'Hour', 'Minute', 'Datetime'], axis=1)
         gen_df = renewables_df
 
     if load_thermal:
-        thermal_df['Datetime'] = pd.to_datetime(thermal_df['Date'].astype('str') + " " + thermal_df['Hour'].astype('str') + ":" + thermal_df['Minute'].astype('str'), format='%Y-%m-%d %H:%M')
-        thermal_df = thermal_df.set_index(pd.DatetimeIndex(thermal_df['Datetime']))
-        thermal_df = thermal_df.drop(['Date', 'Hour', 'Minute', 'Datetime'], axis=1)
         gen_df = thermal_df
 
     if load_thermal and load_renewables:
@@ -110,6 +113,13 @@ def read_rts_gmlc_wind_inputs(source_dir, gen_name=None):
     return wind_df
 
 
+def get_rtsgmlc_bus_dict(source_dir):
+    source_dir = Path(source_dir)
+    bus_names = pd.read_csv(source_dir / "bus.csv")
+    bus_dict = {k: v for k, v in zip(bus_names['Bus ID'].values, bus_names['Bus Name'].values)}
+    return bus_dict
+
+
 def prescient_outputs_for_gen(output_dir, source_dir, gen_name):
     """
     Get timeseries RT and DA Outputs and Capacity factors, Curtailment, Unit Market Revenue, Unit Uplift Payment for the given generator,
@@ -127,8 +137,7 @@ def prescient_outputs_for_gen(output_dir, source_dir, gen_name):
         # double loop may have set the wind or pv plant as a thermal generator, so then these columns are not meaningful
         summary = summary.drop(['RenewablesUsed', 'RenewablesCurtailment'], axis=1)
 
-    bus_names = pd.read_csv(source_dir / "bus.csv")
-    bus_dict = {k: v for k, v in zip(bus_names['Bus ID'].values, bus_names['Bus Name'].values)}
+    bus_dict = get_rtsgmlc_bus_dict(source_dir)
     bus_name = bus_dict[int(gen_name.split('_')[0])]
 
     summary = summary[summary.Bus == bus_name]
@@ -147,16 +156,11 @@ def prescient_double_loop_outputs_for_gen(output_dir):
     Get timeseries double-loop simulation outputs
     """
     output_dir = Path(output_dir)
-    tracker_df = pd.read_csv(output_dir / "tracker_detail.csv")
-    tracker_df['Datetime'] = pd.to_datetime(tracker_df['Date'].astype('str') + " " + tracker_df['Hour'].astype('str') + ":00", format='%Y-%m-%d %H:%M')
-    tracker_df = tracker_df.set_index(pd.DatetimeIndex(tracker_df['Datetime']))
-    tracker_df = tracker_df.drop(['Date', 'Hour', 'Datetime'], axis=1)
+    tracker_df = read_prescient_file(output_dir / "tracker_detail.csv")
 
-    tracker_model_df = pd.read_csv(output_dir / "tracking_model_detail.csv")
-    tracker_model_df['Datetime'] = pd.to_datetime(tracker_model_df['Date'].astype('str') + " " + tracker_model_df['Hour'].astype('str') + ":00", format='%Y-%m-%d %H:%M')
-    tracker_model_df = tracker_model_df.set_index(pd.DatetimeIndex(tracker_model_df['Datetime']))
+    tracker_model_df = read_prescient_file(output_dir / "tracking_model_detail.csv")
     gen_name = tracker_model_df['Generator'].values[0]
-    tracker_model_df = tracker_model_df.drop(['Date', 'Hour', 'Datetime', 'Generator'], axis=1)
+    tracker_model_df = tracker_model_df.drop(['Generator'], axis=1)
 
     tracker_df = pd.merge(tracker_df, tracker_model_df, how='left', on=['Datetime', 'Horizon [hr]'])
     tracker_df.loc[:, 'Model'] = 'Tracker'
@@ -198,3 +202,23 @@ def double_loop_outputs_for_gen(double_loop_dir, source_dir):
     df.Model = pd.Categorical(df.Model, categories=['DA Bidder', 'RT Bidder', 'Tracker', "Prescient"])
     df = df.sort_values(by = ['Datetime', 'Model'], na_position = 'last')
     return df.dropna(axis=1, how='all')
+
+
+def get_rtsgmlc_network(output_dir, source_dir):
+    source_dir = Path(source_dir)
+    df = pd.read_csv(source_dir / "branch.csv")
+    edges = df[['From Bus', 'To Bus']]
+    network = {k: [] for k in set(edges.to_numpy().flatten().tolist())}
+    for e in edges.to_numpy():
+        network[e[0]].append(e[1])
+        network[e[1]].append(e[0])
+
+    df.set_index("UID", inplace=True)
+
+    line_detail = read_prescient_file(output_dir / "line_detail.csv")
+
+    cont_rating = df['Cont Rating'].values.tolist()
+    line_detail['Cont Rating'] = cont_rating * len(line_detail.index.unique())
+    line_detail["Relative Flow"] = np.abs(line_detail['Flow'] / line_detail['Cont Rating'])
+
+    return df, line_detail, network
