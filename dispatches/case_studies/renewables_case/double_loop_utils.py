@@ -63,16 +63,59 @@ def read_prescient_outputs(output_dir, source_dir, gen_name=None):
         gen_df = thermal_df
 
     if load_thermal and load_renewables:
-        gen_df = pd.merge(renewables_df, thermal_df, how='outer', on=['Datetime', 'Generator'])
+        gen_df = pd.merge(renewables_df, thermal_df, how='outer', on=['Datetime', 'Generator', 'Unit Market Revenue', 'Unit Uplift Payment'])
 
     return summary, gen_df
 
 
-def read_rts_gmlc_wind_inputs(source_dir, gen_name=None):
+def read_rts_gmlc_wind_inputs_with_fix(source_dir, gen_df, aggfunc='first'):
+    """
+    For simulations that don't start at 01-01, the time index of the CF here may be shifted by one day relative to the output reported from renewables_detail.csv.
+    To check that the time indices are correct, compare the DA output with the CF and make sure that the output never exceeds the CF.
+    """
+    gen_example='317_WIND_1'
+    pmax_317_WIND_1 = 799.1
+
+    gen_wind = gen_df[gen_df['Generator'] == gen_example]
+
+    wind_df = read_rts_gmlc_wind_inputs(source_dir, None, aggfunc)
+
+    if len(wind_df) == len(gen_wind):
+        assert (wind_df.index == gen_wind.index).all()
+        # DA cfs should have no problems
+        if not (wind_cfs['317_WIND_1-RTCF'] * pmax_317_WIND_1 - gen_wind['Output']).min() > -1e-4:
+            # try to fix by changing the agg func
+            wind_cfs = read_rts_gmlc_wind_inputs(source_dir, gen_example, agg_func='mean')
+    else:
+        wind_cfs = wind_df[wind_df.index.isin(gen_wind.index)]
+        if not (wind_cfs['317_WIND_1-DACF'] * pmax_317_WIND_1 - gen_wind['Output DA']).min() > -1e-4:
+            # try shifting the time index
+            for c in wind_df.columns:
+                wind_df[c] = np.roll(wind_df[c].values, 1)
+            wind_cfs = wind_df[wind_df.index.isin(gen_wind.index)]
+        if not (wind_cfs['317_WIND_1-RTCF'] * pmax_317_WIND_1 - gen_wind['Output']).min() > -1e-4:
+            # try to fix by changing the agg func
+            if aggfunc != 'mean':
+                wind_cfs = read_rts_gmlc_wind_inputs_with_fix(source_dir, gen_df, aggfunc='mean')
+
+    assert (wind_cfs['317_WIND_1-DACF'] * pmax_317_WIND_1 - gen_wind['Output DA']).min() > -1e-4
+    assert (wind_cfs['317_WIND_1-RTCF'] * pmax_317_WIND_1 - gen_wind['Output']).min() > -1e-4
+
+    return wind_cfs
+    
+
+def read_rts_gmlc_wind_inputs(source_dir, gen_name=None, agg_func="first"):
     """
     Read capacity factors for day ahead and real time wind forecasts. 
-    The forecasts are provided as 12 periods per hour, or 288 per day, and are resampled to hourly data.
-    The time index is shifted by one day relative to the other time series data, so np.roll is required at the end.
+    The forecasts are provided as 12 periods per hour, or 288 per day, and are aggregated to hourly data. 
+    The aggregation can be done by taking the mean of the 12 periods, or taking the first. Check your Prescient parameters or outputs to verify.
+
+    Warnings: 
+
+    For simulations that don't start at 01-01, the time index of the CF here may be shifted by one day relative to the output reported from renewables_detail.csv.
+    To check that the time indices are correct, compare the DA output with the CF and make sure that the output never exceeds the CF.
+
+    Use `read_rts_gmlc_wind_inputs_with_fix` to check and try to fix these issues
 
     Args:
         source_dir: "SourceData" folder of the RTS-GMLC
@@ -103,9 +146,13 @@ def read_rts_gmlc_wind_inputs(source_dir, gen_name=None):
     for k in wind_gens:
         rt_wind = wind_rt_df[k].values
         rt_wind = np.reshape(rt_wind, (8784, 12))
-        rt_wind = rt_wind.mean(1)
-        rt_wind = np.roll(rt_wind, 1)
-        da_wind = np.roll(wind_da_df[k].values, 1)
+        if agg_func == "first":
+            rt_wind = rt_wind[:, 0]
+        elif agg_func == "mean":
+            rt_wind = rt_wind.mean(1)
+        else:
+            raise ValueError(f"Unrecognized agg_func {agg_func}. Options are 'first' or 'mean'.")
+        da_wind = wind_da_df[k].values
 
         wind_pmax = gen_df[gen_df['GEN UID'] == k]['PMax MW'].values[0]
         wind_df[k+"-RTCF"] = rt_wind / wind_pmax
