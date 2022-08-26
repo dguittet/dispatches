@@ -167,6 +167,67 @@ def wind_battery_mp_block(wind_resource_config, input_params, verbose=False):
     return m
 
 
+def add_profit_obj(mp_wind_battery, input_params):
+    m = mp_wind_battery.pyomo_model
+
+    blks = mp_wind_battery.get_active_process_blocks()
+    n_time_points = len(blks)
+
+    # add market data for each block
+    for blk in blks:
+        blk_wind = blk.fs.windpower
+        blk_battery = blk.fs.battery
+        
+        # add operating costs
+        blk_wind.op_total_cost = Expression(
+            expr=blk_wind.system_capacity * blk_wind.op_cost / 8760
+        )
+
+        blk.lmp_signal = pyo.Param(default=0, mutable=True)
+        blk.revenue = (
+            blk.lmp_signal * (blk.fs.splitter.grid_elec[0] + blk_battery.elec_out[0])
+        )
+        blk.profit = pyo.Expression(expr=blk.revenue 
+                                         - blk_wind.op_total_cost
+                                         - blk_battery.var_cost)
+
+    for (i, blk) in enumerate(blks):
+        blk.lmp_signal.set_value(input_params['DA_LMPs'][i] * 1e-3) 
+    
+    m.wind_cap_cost = pyo.Param(default=wind_cap_cost, mutable=True)
+    if input_params['extant_wind']:
+        m.wind_cap_cost.set_value(0.0)
+    m.batt_cap_cost = pyo.Param(default=batt_cap_cost, mutable=True)
+
+    n_weeks = n_time_points / (7 * 24)
+    m.annual_revenue = Expression(expr=sum([blk.profit for blk in blks]) * 52 / n_weeks)
+    m.NPV = Expression(
+        expr=-(
+            m.wind_cap_cost * m.wind_system_capacity
+            + m.batt_cap_cost * m.battery_system_capacity
+        )
+        + PA * m.annual_revenue
+    )
+    m.obj = pyo.Objective(expr=-m.NPV * 1e-5)
+
+
+def add_load_following_obj(mp_wind_battery, input_params):
+    m = mp_wind_battery.pyomo_model
+
+    blks = mp_wind_battery.get_active_process_blocks()
+    n_time_points = len(blks)
+
+    for blk in blks:
+        blk_wind = blk.fs.windpower
+        blk_battery = blk.fs.battery
+        
+        # add operating costs
+        blk_wind.op_total_cost = Expression(
+            expr=blk_wind.system_capacity * blk_wind.op_cost / 8760
+        )
+
+        blk.lmp_signal = pyo.Param(default=0, mutable=True)
+
 def wind_battery_optimize(n_time_points, input_params, verbose=False):
     """
     The main function for optimizing the flowsheet's design and operating variables for Net Present Value. 
@@ -216,42 +277,8 @@ def wind_battery_optimize(n_time_points, input_params, verbose=False):
     m.wind_max_p = Constraint(mp_wind_battery.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.windpower.system_capacity <= m.wind_system_capacity)
     m.battery_max_p = Constraint(mp_wind_battery.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.battery.nameplate_power <= m.battery_system_capacity)
 
-    # add market data for each block
-    for blk in blks:
-        blk_wind = blk.fs.windpower
-        blk_battery = blk.fs.battery
-        
-        # add operating costs
-        blk_wind.op_total_cost = Expression(
-            expr=blk_wind.system_capacity * blk_wind.op_cost / 8760
-        )
-
-        blk.lmp_signal = pyo.Param(default=0, mutable=True)
-        blk.revenue = (
-            blk.lmp_signal * (blk.fs.splitter.grid_elec[0] + blk_battery.elec_out[0])
-        )
-        blk.profit = pyo.Expression(expr=blk.revenue 
-                                         - blk_wind.op_total_cost
-                                         - blk_battery.var_cost)
-
-    for (i, blk) in enumerate(blks):
-        blk.lmp_signal.set_value(input_params['DA_LMPs'][i] * 1e-3) 
-    
-    m.wind_cap_cost = pyo.Param(default=wind_cap_cost, mutable=True)
-    if input_params['extant_wind']:
-        m.wind_cap_cost.set_value(0.0)
-    m.batt_cap_cost = pyo.Param(default=batt_cap_cost, mutable=True)
-
-    n_weeks = n_time_points / (7 * 24)
-    m.annual_revenue = Expression(expr=sum([blk.profit for blk in blks]) * 52 / n_weeks)
-    m.NPV = Expression(
-        expr=-(
-            m.wind_cap_cost * m.wind_system_capacity
-            + m.batt_cap_cost * m.battery_system_capacity
-        )
-        + PA * m.annual_revenue
-    )
-    m.obj = pyo.Objective(expr=-m.NPV * 1e-5)
+    if input_params['opt_mode'] == 'profit':
+        add_profit_obj(mp_wind_battery, input_params)
 
     opt = pyo.SolverFactory("cbc")
     opt.solve(m, tee=verbose)

@@ -82,6 +82,7 @@ def read_rts_gmlc_wind_inputs_with_fix(source_dir, gen_df, aggfunc='first'):
 
     if len(wind_df) == len(gen_wind):
         assert (wind_df.index == gen_wind.index).all()
+        wind_cfs = wind_df
         # DA cfs should have no problems
         if not (wind_cfs['317_WIND_1-RTCF'] * pmax_317_WIND_1 - gen_wind['Output']).min() > -1e-4:
             # try to fix by changing the agg func

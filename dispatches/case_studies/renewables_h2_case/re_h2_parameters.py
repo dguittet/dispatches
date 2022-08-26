@@ -16,10 +16,12 @@ import numpy as np
 import copy
 from pathlib import Path
 import pandas as pd
-from PySAM.ResourceTools import SRW_to_wind_data
 from pyomo.common.fileutils import this_file_dir
 
-re_case_dir = Path(this_file_dir())
+from dispatches_sample_data import rts_gmlc
+from dispatches.case_studies.renewables_case.double_loop_utils import read_rts_gmlc_wind_inputs_with_fix
+
+re_h2_dir = Path(this_file_dir())
 
 timestep_hrs = 1                            # timestep [hr]
 # constants
@@ -68,23 +70,24 @@ i = 0.05                                    # discount rate
 N = 30                                      # years
 PA = ((1+i)**N - 1)/(i*(1+i)**N)            # present value / annuity = 1 / CRF
 
+wind_gen = "317_WIND"
+wind_gen_pmax = 799.1
+gas_gen = "318_CC"
+market = "RT"
+reserves = 10
+shortfall = 10000
+
 # load pre-compiled RTS-GMLC output data
-df = pd.read_csv(re_case_dir / "data" / "Wind_Thermal_Dispatch.csv", index_col='Unnamed: 0', parse_dates=True)
+df = pd.read_csv(re_h2_dir / "data" / "Wind_Thermal_Gen.csv", index_col="Datetime", parse_dates=True)
+df = df.query(f"Reserves == {reserves} & Shortfall == {shortfall}")
 
-bus = "317"
-market = "DA"
-
-prices = df[f"{bus}_{market}LMP"].values
-prices_used = copy.copy(prices)
-prices_used[prices_used > 200] = 200
-weekly_prices = prices_used.reshape(52, 168)
-
-wind_cfs = df[f"{bus}_WIND_1-{market}CF"].values
+wind_cfs = df['317_WIND_1-RTCF'].values
 wind_capacity_factors = {t:
                             {'wind_resource_config': {
                                 'capacity_factor': 
                                     [wind_cfs[t]]}} for t in range(len(wind_cfs))}
 
+loads_mw = (df[f"{wind_gen} Output"] + df[f"{gas_gen} Output"]).values
 
 default_input_params = {
     "wind_mw": fixed_wind_mw,
@@ -99,10 +102,10 @@ default_input_params = {
 
     "wind_resource": wind_capacity_factors,
     "h2_price_per_kg": h2_price_per_kg,
-    "DA_LMPs": prices_used,
 
     "design_opt": True,
-    "extant_wind": True,
+    "extant_wind": False,
 
-    "opt_mode": "profit"
+    "opt_mode": "meet_load",
+    "load": loads_mw
 }
