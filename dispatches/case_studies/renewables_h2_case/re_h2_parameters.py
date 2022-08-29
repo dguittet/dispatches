@@ -72,7 +72,7 @@ PA = ((1+i)**N - 1)/(i*(1+i)**N)            # present value / annuity = 1 / CRF
 
 wind_gen = "317_WIND"
 wind_gen_pmax = 799.1
-gas_gen = "318_CC"
+gas_gen = "317_CT"
 market = "RT"
 reserves = 10
 shortfall = 10000
@@ -80,6 +80,10 @@ shortfall = 10000
 # load pre-compiled RTS-GMLC output data
 df = pd.read_csv(re_h2_dir / "data" / "Wind_Thermal_Gen.csv", index_col="Datetime", parse_dates=True)
 df = df.query(f"Reserves == {reserves} & Shortfall == {shortfall}")
+df = df[df['Mod Gen'] == gas_gen]
+
+if not len(df):
+    raise ValueError
 
 wind_cfs = df['317_WIND_1-RTCF'].values
 wind_capacity_factors = {t:
@@ -87,7 +91,7 @@ wind_capacity_factors = {t:
                                 'capacity_factor': 
                                     [wind_cfs[t]]}} for t in range(len(wind_cfs))}
 
-loads_mw = (df[f"{wind_gen} Output"] + df[f"{gas_gen} Output"]).values
+loads_mw = (df[f"{wind_gen} Output"] + df[f"Gas Output"]).values
 
 default_input_params = {
     "wind_mw": fixed_wind_mw,

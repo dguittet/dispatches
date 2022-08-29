@@ -16,8 +16,7 @@ import pandas as pd
 import pyomo.environ as pyo
 from idaes.apps.grid_integration.multiperiod.multiperiod import MultiPeriodModel
 from dispatches.case_studies.renewables_case.RE_flowsheet import *
-from dispatches.case_studies.renewables_case.load_parameters import *
-from dispatches.case_studies.renewables_case.load_parameters import df
+from dispatches.case_studies.renewables_h2_case.re_h2_parameters import *
 
 
 def wind_battery_variable_pairs(m1, m2):
@@ -57,10 +56,6 @@ def wind_battery_om_costs(m):
     """
     m.fs.windpower.op_cost = pyo.Param(
         initialize=wind_op_cost, doc="fixed cost of operating wind plant $10/kW-yr"
-    )
-    m.fs.windpower.op_total_cost = Expression(
-        expr=m.fs.windpower.system_capacity * m.fs.windpower.op_cost / 8760,
-        doc="total fixed cost of wind in $/hr",
     )
     m.fs.battery.var_cost = pyo.Expression(
         expr=m.fs.battery.degradation_rate * (m.fs.battery.energy_throughput[0] - m.fs.battery.initial_energy_throughput) * batt_rep_cost_kwh,
@@ -217,7 +212,7 @@ def add_load_following_obj(mp_wind_battery, input_params):
     blks = mp_wind_battery.get_active_process_blocks()
     n_time_points = len(blks)
 
-    for blk in blks:
+    for (i, blk) in enumerate(blks):
         blk_wind = blk.fs.windpower
         blk_battery = blk.fs.battery
         
@@ -226,7 +221,8 @@ def add_load_following_obj(mp_wind_battery, input_params):
             expr=blk_wind.system_capacity * blk_wind.op_cost / 8760
         )
 
-        blk.lmp_signal = pyo.Param(default=0, mutable=True)
+        blk.load = pyo.Param(default=input_params['load'][i] * 1e3, mutable=True)   # convert to kW
+
 
 def wind_battery_optimize(n_time_points, input_params, verbose=False):
     """
@@ -279,6 +275,10 @@ def wind_battery_optimize(n_time_points, input_params, verbose=False):
 
     if input_params['opt_mode'] == 'profit':
         add_profit_obj(mp_wind_battery, input_params)
+    elif input_params['opt_mode'] == 'meet_load':
+        add_load_following_obj(mp_wind_battery, input_params)
+    else:
+        raise ValueError(f"Unrecoginzed 'opt_mode' {input_params['opt_mode']}. Choice are 'profit' or 'meet_load'")
 
     opt = pyo.SolverFactory("cbc")
     opt.solve(m, tee=verbose)
