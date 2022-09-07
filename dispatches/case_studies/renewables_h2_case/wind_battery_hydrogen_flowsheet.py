@@ -339,9 +339,9 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
 
     add_load_following_obj(mp_model, input_params)
 
-    opt = pyo.SolverFactory('ipopt')
+    opt = pyo.SolverFactory('xpress_direct')
 
-    opt.options['max_iter'] = 10000
+    # opt.options['max_iter'] = 10000
 
     if verbose:
         solve_log = idaeslog.getInitLogger("infeasibility", idaeslog.INFO, tag="properties")
@@ -394,13 +394,13 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     print(design_res)
 
     if plot:
-        fig, ax1 = plt.subplots(3, 1, figsize=(20, 8))
+        fig, ax1 = plt.subplots(3, 1, figsize=(20, 8), sharex=True)
         fig.suptitle(f"Optimal NPV ${round(value(m.NPV) * 1e-6)}mil from {round(batt_cap, 2)} MW Battery, "
                      f"{round(pem_cap, 2)} MW PEM, {round(tank_size, 2)} tonH2 Tank and {round(turb_cap, 2)} MW Turbine")
 
         # color = 'tab:green'
         ax1[0].set_xlabel('Hour')
-        # ax1[0].set_ylabel('kW', )
+        ax1[0].set_ylabel('kW')
         ax1[0].step(hours, wind_gen, label="Wind Generation [kW]")
         ax1[0].step(hours, wind_out, label="Wind to Grid [kW]")
         ax1[0].step(hours, wind_to_pem, label="Wind to Pem [kW]")
@@ -413,13 +413,6 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         ax1[0].minorticks_on()
         ax1[0].grid(visible=True, which='minor', color='k', linestyle='--', alpha=0.2)
 
-        ax2 = ax1[0].twinx()
-        color = 'k'
-        ax2.set_ylabel('LMP [$/MWh]', color=color)
-        # ax2.plot(hours, lmp_array[0:len(hours)], color=color)
-        ax2.tick_params(axis='y', labelcolor=color)
-
-        # ax1[1].set_xlabel('Hour')
         # ax1[1].set_ylabel('kg/hr', )
         ax1[1].step(hours, h2_prod, label="PEM H2 production [kg/hr]")
         ax1[1].step(hours, h2_tank_in, label="Tank inlet [kg/hr]")
@@ -431,13 +424,6 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         ax1[1].minorticks_on()
         ax1[1].grid(visible=True, which='minor', color='k', linestyle='--', alpha=0.2)
 
-        ax2 = ax1[1].twinx()
-        color = 'k'
-        ax2.set_ylabel('LMP [$/MWh]', color=color)
-        # ax2.plot(hours, lmp_array[0:len(hours)], color=color)
-        ax2.tick_params(axis='y', labelcolor=color)
-
-        ax1[2].set_xlabel('Hour')
         ax1[2].step(hours, elec_income, label="Elec Income")
         ax1[2].step(hours, h2_revenue, label="H2 rev")
         ax1[2].step(hours, np.cumsum(elec_income), label="Elec Income cumulative")
@@ -454,5 +440,8 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
 
 
 if __name__ == "__main__":
-    des_res = wind_battery_hydrogen_optimize(n_time_points=14 * 24, input_params=re_h2_parameters, verbose=False, plot=False)
+    re_h2_parameters["pem_cap_cost"] *= 0.1
+    re_h2_parameters["tank_cap_cost_per_kg"] *= 0.1
+    re_h2_parameters["turbine_cap_cost"] *= 0.1
+    des_res = wind_battery_hydrogen_optimize(n_time_points=int(8760/2), input_params=re_h2_parameters, verbose=False, plot=False)
     print(des_res)

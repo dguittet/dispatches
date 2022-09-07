@@ -54,7 +54,7 @@ wind_gen_pmax = 799.1
 gas_gen = "317_CT"
 reserves = 10
 shortfall = 10000
-start_date = '2020-06-01 00:00:00'
+start_date = '2020-01-01 00:00:00'
 wind_capacity_factors, loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
 
 
