@@ -57,7 +57,11 @@ def wind_battery_om_costs(m):
     m.fs.windpower.op_cost = pyo.Param(
         initialize=wind_op_cost, doc="fixed cost of operating wind plant $10/kW-yr"
     )
-    m.fs.battery.var_cost = pyo.Expression(
+    m.fs.windpower.op_total_cost = Expression(
+        expr=m.fs.windpower.system_capacity * m.fs.windpower.op_cost / 8760,
+        doc="total fixed cost of wind in $/hr",
+    )
+    m.fs.battery.op_total_cost = pyo.Expression(
         expr=m.fs.battery.degradation_rate * (m.fs.battery.energy_throughput[0] - m.fs.battery.initial_energy_throughput) * batt_rep_cost_kwh,
         doc="variable operating of the battery $/kWh"
     )
@@ -164,37 +168,25 @@ def wind_battery_mp_block(wind_resource_config, input_params, verbose=False):
 
 def add_profit_obj(mp_wind_battery, input_params):
     m = mp_wind_battery.pyomo_model
-
     blks = mp_wind_battery.get_active_process_blocks()
-    n_time_points = len(blks)
+    n_weeks = len(blks) / (7 * 24)
 
     # add market data for each block
     for blk in blks:
         blk_wind = blk.fs.windpower
         blk_battery = blk.fs.battery
         
-        # add operating costs
-        blk_wind.op_total_cost = Expression(
-            expr=blk_wind.system_capacity * blk_wind.op_cost / 8760
-        )
-
         blk.lmp_signal = pyo.Param(default=0, mutable=True)
         blk.revenue = (
             blk.lmp_signal * (blk.fs.splitter.grid_elec[0] + blk_battery.elec_out[0])
         )
         blk.profit = pyo.Expression(expr=blk.revenue 
                                          - blk_wind.op_total_cost
-                                         - blk_battery.var_cost)
+                                         - blk_battery.op_total_cost)
 
     for (i, blk) in enumerate(blks):
         blk.lmp_signal.set_value(input_params['DA_LMPs'][i] * 1e-3) 
     
-    m.wind_cap_cost = pyo.Param(default=wind_cap_cost, mutable=True)
-    if input_params['extant_wind']:
-        m.wind_cap_cost.set_value(0.0)
-    m.batt_cap_cost = pyo.Param(default=batt_cap_cost, mutable=True)
-
-    n_weeks = n_time_points / (7 * 24)
     m.annual_revenue = Expression(expr=sum([blk.profit for blk in blks]) * 52 / n_weeks)
     m.NPV = Expression(
         expr=-(
@@ -210,18 +202,33 @@ def add_load_following_obj(mp_wind_battery, input_params):
     m = mp_wind_battery.pyomo_model
 
     blks = mp_wind_battery.get_active_process_blocks()
-    n_time_points = len(blks)
+    n_weeks = len(blks) / (7 * 24)
 
     for (i, blk) in enumerate(blks):
         blk_wind = blk.fs.windpower
         blk_battery = blk.fs.battery
         
-        # add operating costs
-        blk_wind.op_total_cost = Expression(
-            expr=blk_wind.system_capacity * blk_wind.op_cost / 8760
-        )
+        blk.load_power = Param(default=input_params['load'][i] * 1e3, mutable=True, units=pyunits.kW)   # convert to kW
+        blk.output_power = Expression(expr=blk.fs.splitter.grid_elec[0] + blk_battery.elec_out[0])
+        blk.under_power = Var(domain=NonNegativeReals, initialize=0, units=pyunits.kW)
+        blk.over_power = Var(domain=NonNegativeReals, initialize=0, units=pyunits.kW)
 
-        blk.load = pyo.Param(default=input_params['load'][i] * 1e3, mutable=True)   # convert to kW
+        blk.meet_load = Constraint(expr=blk.output_power + blk.under_power == blk.load_power + blk.over_power)
+
+        blk.profit = pyo.Expression(expr=-input_params['shortfall_price'] * blk.under_power 
+                                         - blk_wind.op_total_cost
+                                         - blk_battery.op_total_cost)
+
+    m.annual_revenue = Expression(expr=sum([blk.profit for blk in blks]) * 52 / n_weeks)
+
+    m.NPV = Expression(
+        expr=-(
+            m.wind_cap_cost * m.wind_system_capacity
+            + m.batt_cap_cost * m.battery_system_capacity
+        )
+        + PA * m.annual_revenue
+    )
+    m.obj = pyo.Objective(expr=-m.NPV)
 
 
 def wind_battery_optimize(n_time_points, input_params, verbose=False):
@@ -273,6 +280,11 @@ def wind_battery_optimize(n_time_points, input_params, verbose=False):
     m.wind_max_p = Constraint(mp_wind_battery.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.windpower.system_capacity <= m.wind_system_capacity)
     m.battery_max_p = Constraint(mp_wind_battery.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.battery.nameplate_power <= m.battery_system_capacity)
 
+    m.wind_cap_cost = Param(default=wind_cap_cost, mutable=True)
+    if input_params['extant_wind']:
+        m.wind_cap_cost.set_value(0.0)
+    m.batt_cap_cost = Param(default=batt_cap_cost, mutable=True)
+
     if input_params['opt_mode'] == 'profit':
         add_profit_obj(mp_wind_battery, input_params)
     elif input_params['opt_mode'] == 'meet_load':
@@ -313,7 +325,11 @@ def record_results(mp_wind_battery):
         pyo.value(blks[i].fs.battery.elec_in[0]) * 1e-3 for i in range(n_time_points)
     ]
     elec_revenue = [pyo.value(blks[i].profit) for i in range(n_time_points)]
-    lmp = [pyo.value(blks[i].lmp_signal) * 1e3 for i in range(n_time_points)]
+
+    if hasattr(blks[0], "lmp_signal"):
+        signal = [pyo.value(blks[i].lmp_signal) * 1e3 for i in range(n_time_points)]
+    elif hasattr(blks[0], "load_power"):
+        signal = [pyo.value(blks[i].load_power) * 1e3 for i in range(n_time_points)]
 
     wind_cap = value(m.wind_system_capacity) * 1e-3
     batt_cap = value(m.battery_system_capacity) * 1e-3
@@ -334,7 +350,7 @@ def record_results(mp_wind_battery):
         wind_to_grid,
         wind_to_batt,
         elec_revenue,
-        lmp,
+        signal,
         wind_cap,
         batt_cap,
         annual_revenue,
@@ -349,11 +365,12 @@ def plot_results(
     wind_to_grid,
     wind_to_batt,
     elec_revenue,
-    lmp,
+    signal,
     wind_cap,
     batt_cap,
     annual_revenue,
     npv,
+    opt_mode
 ):
 
     hours = [t for t in range(len(soc))]
@@ -381,14 +398,19 @@ def plot_results(
 
     ax2 = ax1[0].twinx()
     color = "k"
-    ax2.set_ylabel("LMP [$/MWh]", color=color)
-    ax2.plot(hours, lmp, color=color)
+    if opt_mode == 'profit':
+        ax2.set_ylabel("LMP [$/MWh]", color=color)
+        ax2.plot(hours, signal, color=color)
+    else:
+        ax2.set_ylabel("Load [MWh]", color=color)
+        ax2.step(hours, signal, color=color, linestyle=':', alpha=0.5)
     ax2.tick_params(axis="y", labelcolor=color)
 
     ax2 = ax1[1].twinx()
     color = "k"
-    ax2.set_ylabel("LMP [$/MWh]", color=color)
-    ax2.plot(hours, lmp, color=color)
+    if opt_mode == 'profit':
+        ax2.set_ylabel("LMP [$/MWh]", color=color)
+        ax2.plot(hours, signal, color=color)
     ax2.tick_params(axis="y", labelcolor=color)
 
     ax1[1].set_xlabel("Hour")
@@ -404,7 +426,7 @@ def plot_results(
 
 
 if __name__ == "__main__":
-    mp_wind_battery = wind_battery_optimize(n_time_points=6 * 24, input_params=default_input_params)
+    mp_wind_battery = wind_battery_optimize(n_time_points=7 * 24 * 16, input_params=re_h2_parameters)
     soc, wind_gen, batt_to_grid, wind_to_grid, wind_to_batt, elec_revenue, lmp, wind_cap, batt_cap, annual_revenue, npv = record_results(mp_wind_battery)
-    ax1, ax2 = plot_results(soc, wind_gen, batt_to_grid, wind_to_grid, wind_to_batt, elec_revenue, lmp, wind_cap, batt_cap, annual_revenue, npv)
-    # plt.show()
+    ax1, ax2 = plot_results(soc, wind_gen, batt_to_grid, wind_to_grid, wind_to_batt, elec_revenue, lmp, wind_cap, batt_cap, annual_revenue, npv, re_h2_parameters['opt_mode'])
+    plt.show()

@@ -176,7 +176,7 @@ class MultiPeriodWindBattery:
         for (t, b) in enumerate(active_blks):
             blk.P_T[t] = (b.fs.splitter.grid_elec[0] + b.fs.battery.elec_out[0]) * 1e-3
             blk.wind_waste[t] = (b.fs.windpower.system_capacity * b.fs.windpower.capacity_factor[0] - b.fs.windpower.electricity[0]) * 1e-3
-            blk.tot_cost[t] = b.fs.windpower.op_total_cost + b.fs.battery.var_cost + blk.wind_waste_penalty * blk.wind_waste[t]
+            blk.tot_cost[t] = b.fs.windpower.op_total_cost + b.fs.battery.op_total_cost + blk.wind_waste_penalty * blk.wind_waste[t]
 
         return
 

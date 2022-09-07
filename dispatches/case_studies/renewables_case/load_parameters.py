@@ -54,10 +54,10 @@ valve_cv = 0.00001
 fixed_tank_size = 0.5
 
 # operation parameters
+pem_kwh_kg = 0.002527406                    # Conversion of kW to mol/sec of H2 based on H-tec design of 54.517kW-hr/kg
 pem_bar = 1.01325
-pem_temp = 300                  # [K]
-# battery_ramp_rate = 25 * 1e3              # kwh/hr
-battery_ramp_rate = 1e8
+pem_temp = 300                              # [K]
+battery_ramp_rate = 1e8                     # kwh/hr
 h2_turb_min_flow = 1e-3
 air_h2_ratio = 10.76
 compressor_dp = 24.01
@@ -94,7 +94,7 @@ default_input_params = {
     "pem_bar": pem_bar,
     "pem_temp": pem_temp,
     "tank_size": fixed_tank_size,
-    "tank_type": "simple",
+    "tank_type": "detailed",
     "turb_mw": turb_p_mw,
 
     "wind_resource": wind_capacity_factors,
