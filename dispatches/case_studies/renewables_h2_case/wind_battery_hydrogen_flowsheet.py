@@ -13,6 +13,7 @@
 #
 #################################################################################
 from functools import partial
+import numbers
 import matplotlib.pyplot as plt
 import numpy as np
 import pyomo.environ as pyo
@@ -32,7 +33,6 @@ def wind_battery_hydrogen_variable_pairs(m1, m2):
     Args:
         m1: current time block model
         m2: next time block model
-        tank_type: `simple`, `detailed` or `detailed-valve`
     """
     pairs = [(m1.fs.h2_tank.tank_holdup[0], m2.fs.h2_tank.tank_holdup_previous[0])]
     pairs += [(m1.fs.battery.state_of_charge[0], m2.fs.battery.initial_state_of_charge),
@@ -58,7 +58,7 @@ def wind_battery_hydrogen_periodic_variable_pairs(m1, m2):
 
 def wind_battery_hydrogen_om_costs(m, input_params):
     """
-    Add unit fixed and variable operating costs as pyo.Parameters for the unit model m
+    Add unit fixed and variable operating costs as parameters for the unit model m
     """
     m.fs.windpower.op_cost = pyo.Param(
         initialize=input_params["wind_op_cost"],
@@ -134,11 +134,11 @@ def wind_battery_hydrogen_model(wind_resource_config, input_params, verbose):
     
     First, the model is created using the input_params and wind_resource_config
     Second, the model is initialized so that it solves and its values are internally consistent
-    Third, battery ramp pyo.Constraints and operating cost components are added
+    Third, battery ramp constraints and operating cost components are added
 
     Args:
         wind_resource_config: wind resource for the time step
-        input_params: size and operation pyo.Parameters. Required keys: `wind_mw`, `pem_bar`, `batt_mw`, `tank_size`, `pem_bar`, `turb_conv`
+        input_params: size and operation parameters. Required keys: `wind_mw`, `pem_bar`, `batt_mw`, `tank_size`, `pem_bar`, `turb_conv`
         verbose:
     """
     m = create_model(input_params['wind_mw'], input_params['pem_bar'], input_params['batt_mw'], "simple", input_params['tank_size'], None,
@@ -152,6 +152,10 @@ def wind_battery_hydrogen_model(wind_resource_config, input_params, verbose):
 
     m.fs.battery.initial_state_of_charge.unfix()
     m.fs.battery.initial_energy_throughput.unfix()
+
+    # unfix for design optimization
+    m.fs.battery.nameplate_power.unfix()
+    m.fs.windpower.system_capacity.unfix()
 
     batt = m.fs.battery
     batt.energy_down_ramp = pyo.Constraint(
@@ -173,7 +177,7 @@ def wind_battery_hydrogen_mp_block(wind_resource_config, input_params, verbose):
 
     Args:
         wind_resource_config: dictionary with `resource_speed` for the time step
-        input_params: size and operation pyo.Parameters. Required keys: `wind_mw`, `pem_bar`, `batt_mw`, `tank_type`, `tank_size`, `pem_bar`, `turb_conv`
+        input_params: size and operation parameters. Required keys: `wind_mw`, `pem_bar`, `batt_mw`, `tank_size`, `pem_bar`, `turb_conv`
         verbose:
     """
 
@@ -229,11 +233,11 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     """
     The main function for optimizing the flowsheet's design and operating variables for Net Present Value. 
 
-    Creates the MultiPeriodModel and adds the size and operating pyo.Constraints in addition to the Net Present Value Objective.
+    Creates the MultiPeriodModel and adds the size and operating constraints in addition to the Net Present Value Objective.
     The NPV is a function of the capital costs, the electricity market profit, the hydrogen market profit, and the capital recovery factor.
-    The operating decisions and state evolution of the unit models and the flowsheet as a whole form the pyo.Constraints of the Non-linear Program.
+    The operating decisions and state evolution of the unit models and the flowsheet as a whole form the constraints of the Non-linear Program.
 
-    Required input pyo.Parameters include:
+    Required input parameters include:
         `wind_mw`: initial guess of the wind size
         `wind_mw_ub`: upper bound of wind size
         `batt_mw`: initial guess of the battery size
@@ -246,8 +250,8 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         `wind_resource`: dictionary of wind resource configs for each time point
         `h2_price_per_kg`: market price of hydrogen
         `DA_LMPs`: LMPs for each time point
-        `design_opt`: true to optimize design, else sizes are fixed at initial guess sizes
-        `extant_wind`: if true, fix wind size to initial size and do not add wind capital cost to NPV
+        `build_add_wind`: if false, fix wind size to initial size and do not add wind capital cost to NPV.
+            otherwise, any additional wind beyond that `wind_mw` incurs capital cost 
 
     Args:
         n_time_points: number of periods in MultiPeriod model
@@ -269,39 +273,33 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     blks[0].fs.battery.initial_energy_throughput.fix(0)
     
     # capital costs
-    m.wind_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['wind_mw'] * 1e3, units=pyo.units.kW, bounds=(0, input_params['wind_mw_ub'] * 1e3))
+    m.wind_system_capacity = pyo.Param(default=input_params['wind_mw'] * 1e3, units=pyo.units.kW)
     m.battery_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['batt_mw'] * 1e3, units=pyo.units.kW)
+    m.battery_system_energy = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['batt_mw'] * 1e3 * input_params['batt_hr'], units=pyo.units.kWh)
     m.pem_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['pem_mw'] * 1e3, units=pyo.units.kW)
     m.h2_tank_size = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['tank_size'], units=pyo.units.kg)
     m.turb_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['turb_mw'] * 1e3, units=pyo.units.kW)
 
     m.wind_cap_cost = pyo.Param(default=input_params["wind_cap_cost"], mutable=True)
-    if input_params['extant_wind']:
-        m.wind_cap_cost.set_value(0.)
+    m.wind_add_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=0, units=pyo.units.kW)
+    if not input_params['build_add_wind']:
+        m.wind_add_system_capacity.fix(0)
+
     m.pem_cap_cost = pyo.Param(default=input_params["pem_cap_cost"], mutable=True)
     m.batt_cap_cost = pyo.Param(default=input_params["batt_cap_cost_kw"], mutable=True)
     m.tank_cap_cost = pyo.Param(default=input_params["tank_cap_cost_per_kg"], mutable=True)
     m.turb_cap_cost = pyo.Param(default=input_params["turbine_cap_cost"], mutable=True)
 
-    m.total_cap_cost = pyo.Expression(expr=m.wind_cap_cost * m.wind_system_capacity
+    m.total_cap_cost = pyo.Expression(expr=m.wind_cap_cost * m.wind_add_system_capacity
                                        + m.batt_cap_cost * m.battery_system_capacity
+                                       + m.batt_cap_cost * m.battery_system_energy
                                        + m.pem_cap_cost * m.pem_system_capacity
                                        + m.tank_cap_cost * m.h2_tank_size
                                        + m.turb_cap_cost * m.turb_system_capacity)
 
-    # add size pyo.Constraints
-    if input_params['design_opt']:
-        if input_params['extant_wind']:
-            m.wind_system_capacity.fix()
-        for blk in blks:
-            blk.fs.battery.nameplate_power.unfix()
-    else:
-        m.pem_system_capacity.fix(input_params['pem_mw'])
-        m.h2_tank_size.fix(input_params['tank_size'])
-        m.turb_system_capacity.fix(input_params['turb_mw'])
-
-    m.wind_max_p = pyo.Constraint(mp_model.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.windpower.system_capacity <= m.wind_system_capacity)
+    m.wind_max_p = pyo.Constraint(mp_model.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.windpower.system_capacity <= m.wind_system_capacity + m.wind_add_system_capacity)
     m.battery_max_p = pyo.Constraint(mp_model.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.battery.nameplate_power <= m.battery_system_capacity)
+    m.battery_max_e = pyo.Constraint(mp_model.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.battery.nameplate_energy <= m.battery_system_energy)
     m.pem_max_p = pyo.Constraint(mp_model.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.pem.electricity[0] <= m.pem_system_capacity)
     m.tank_max_p = pyo.Constraint(mp_model.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.h2_tank.tank_holdup[0] / h2_mols_per_kg <= m.h2_tank_size)
     m.turb_max_p = pyo.Constraint(mp_model.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.h2_turbine_elec <= m.turb_system_capacity)
@@ -348,7 +346,7 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         log_infeasible_constraints(m, logger=solve_log, tol=1e-4, log_expression=True, log_variables=True)
         log_infeasible_bounds(m, logger=solve_log, tol=1e-4)
 
-    opt.solve(m, tee=True)
+    opt.solve(m, tee=False)
 
     if verbose:
         solve_log = idaeslog.getInitLogger("infeasibility", idaeslog.INFO, tag="properties")
@@ -373,8 +371,10 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
 
     hours = np.arange(n_time_points)
 
-    wind_cap = value(m.wind_system_capacity) * 1e-3
+    wind_cap = value(m.wind_system_capacity + m.wind_add_system_capacity) * 1e-3
     batt_cap = value(m.battery_system_capacity) * 1e-3
+    batt_energy = value(m.battery_system_energy) * 1e-3
+
     pem_cap = value(m.pem_system_capacity) * 1e-3
     tank_size = value(m.h2_tank_size) * 0.00110231 # to ton
     turb_cap = value(m.turb_system_capacity) * 1e-3
@@ -382,6 +382,7 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     design_res = {
         'wind_mw': wind_cap,
         "batt_mw": batt_cap,
+        "batt_mwh": batt_energy,
         "pem_mw": pem_cap,
         "tank_tonH2": tank_size,
         "turb_mw": turb_cap,
@@ -440,8 +441,8 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
 
 
 if __name__ == "__main__":
-    re_h2_parameters["pem_cap_cost"] *= 0.1
-    re_h2_parameters["tank_cap_cost_per_kg"] *= 0.1
-    re_h2_parameters["turbine_cap_cost"] *= 0.1
-    des_res = wind_battery_hydrogen_optimize(n_time_points=int(8760/2), input_params=re_h2_parameters, verbose=False, plot=False)
+    # re_h2_parameters["pem_cap_cost"] *= 0.1
+    # re_h2_parameters["tank_cap_cost_per_kg"] *= 0.1
+    # re_h2_parameters["turbine_cap_cost"] *= 0.1
+    des_res = wind_battery_hydrogen_optimize(n_time_points=int(8760/6), input_params=re_h2_parameters, verbose=False, plot=False)
     print(des_res)

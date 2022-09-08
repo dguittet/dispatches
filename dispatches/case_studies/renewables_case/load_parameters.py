@@ -29,8 +29,9 @@ H2_mass = 2.016 / 1000
 # costs in per kW unless specified otherwise
 wind_cap_cost = 1550
 wind_op_cost = 43
-batt_cap_cost = 300 * 4                     # per kW for 4 hour battery
-batt_rep_cost_kwh = batt_cap_cost * 0.5 / 4 # assume 50% price w/ discounting and 4 hour battery
+batt_cap_cost_kw = 634.88
+batt_cap_cost_kwh = 171.71                  
+batt_rep_cost_kwh = (batt_cap_cost_kw + 2 * batt_cap_cost_kwh) * 0.5 / 4 # assume 50% price w/ discounting and 2 hour battery
 pem_cap_cost = 1630
 pem_op_cost = 47.9
 pem_var_cost = 1.3/1000                     # per kWh
@@ -104,5 +105,19 @@ default_input_params = {
     "design_opt": True,
     "extant_wind": True,
 
-    "opt_mode": "profit"
+    "opt_mode": "profit",
+
+    "wind_cap_cost": wind_cap_cost,
+    "wind_op_cost": wind_op_cost,
+    "batt_cap_cost_kw": batt_cap_cost_kw,
+    "batt_cap_cost_kwh": batt_cap_cost_kwh,
+    "batt_rep_cost_kwh": batt_rep_cost_kwh,
+    "pem_cap_cost": pem_cap_cost,
+    "pem_op_cost": pem_op_cost,
+    "pem_var_cost": pem_var_cost,
+    "tank_cap_cost_per_kg": tank_cap_cost_per_kg,
+    "tank_op_cost":tank_op_cost,
+    "turbine_cap_cost": turbine_cap_cost,
+    "turbine_op_cost": turbine_op_cost,
+    "turbine_var_cost": turbine_var_cost
 }

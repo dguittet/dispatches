@@ -24,7 +24,7 @@ from dispatches.case_studies.renewables_case.load_parameters import *
 
 re_h2_dir = Path(this_file_dir())
 
-turb_conv_rate = 20                         # kwh/kgH2
+turb_conv_rate = 20                         # kwh/kgH2 for h2 turbine
 
 def get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date=None):
     """
@@ -51,10 +51,10 @@ def get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_d
 
 wind_gen = "317_WIND"
 wind_gen_pmax = 799.1
-gas_gen = "317_CT"
+gas_gen = "317_CC"
 reserves = 10
 shortfall = 10000
-start_date = '2020-01-01 00:00:00'
+start_date = '2020-05-01 00:00:00'
 wind_capacity_factors, loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
 
 
@@ -66,15 +66,13 @@ re_h2_parameters = {
     "pem_bar": pem_bar,
     "pem_temp": pem_temp,
     "tank_size": fixed_tank_size,
-    "tank_type": "simple",
     "turb_mw": turb_p_mw,
     "turb_conv": turb_conv_rate,
 
     "wind_resource": wind_capacity_factors,
     "h2_price_per_kg": h2_price_per_kg,
 
-    "design_opt": True,
-    "extant_wind": True,
+    "build_add_wind": True,
 
     "opt_mode": "meet_load",
     "load": loads_mw,
@@ -82,7 +80,8 @@ re_h2_parameters = {
 
     "wind_cap_cost": wind_cap_cost,
     "wind_op_cost": wind_op_cost,
-    "batt_cap_cost_kw": batt_cap_cost,
+    "batt_cap_cost_kw": batt_cap_cost_kw,
+    "batt_cap_cost_kwh": batt_cap_cost_kwh,
     "batt_rep_cost_kwh": batt_rep_cost_kwh,
     "pem_cap_cost": pem_cap_cost,
     "pem_op_cost": pem_op_cost,

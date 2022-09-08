@@ -42,6 +42,10 @@ def input_params():
                         }
                     } for t in range(8760)}
     params["wind_resource"] = wind_resource
+
+    params["batt_cap_cost_kw"] = 1200
+    params["batt_cap_cost_kwh"] = 0
+    params["batt_rep_cost_kwh"] = 150
     return params
 
 def test_h2_valve_opening():

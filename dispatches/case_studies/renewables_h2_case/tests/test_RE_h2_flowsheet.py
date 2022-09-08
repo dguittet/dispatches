@@ -53,6 +53,7 @@ def test_wind_battery_optimize(input_params):
 
 def test_wind_battery_hydrogen_optimize(input_params):
     design_res = wind_battery_hydrogen_optimize(7 * 24, input_params, verbose=False, plot=False)
+    print(design_res)
     assert design_res['batt_mw'] == pytest.approx(32.99, rel=1e-2)
     assert design_res['pem_mw'] == pytest.approx(0, abs=3)
     assert design_res['tank_tonH2'] == pytest.approx(0, abs=3)
@@ -64,10 +65,11 @@ def test_wind_battery_hydrogen_optimize(input_params):
 
 
 def test_wind_battery_hydrogen_optimize_cheap_hydrogen(input_params):
-    input_params["pem_cap_cost"] *= 0.1
-    input_params["tank_cap_cost_per_kg"] *= 0.1
-    input_params["turbine_cap_cost"] *= 0.1
+    # input_params["pem_cap_cost"] *= 0.1
+    # input_params["tank_cap_cost_per_kg"] *= 0.1
+    # input_params["turbine_cap_cost"] *= 0.1
     design_res = wind_battery_hydrogen_optimize(7 * 24, input_params, verbose=False, plot=False)
+    print(design_res)
     assert design_res['batt_mw'] == pytest.approx(20, rel=1e-2)
     assert design_res['pem_mw'] == pytest.approx(2, abs=3)
     assert design_res['tank_tonH2'] == pytest.approx(1.54, abs=3)
