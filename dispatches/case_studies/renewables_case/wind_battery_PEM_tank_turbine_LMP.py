@@ -504,9 +504,9 @@ def wind_battery_pem_tank_turb_optimize(n_time_points, input_params, verbose=Fal
     wind_to_pem = [pyo.value(blks[i].fs.pem.electricity[0]) for i in range(n_time_points)]
     batt_out = [pyo.value(blks[i].fs.battery.elec_out[0]) for i in range(n_time_points)]
     batt_in = [pyo.value(blks[i].fs.battery.elec_in[0]) for i in range(n_time_points)]
-    h2_turbine_elec = [pyo.value(blks[i].fs.h2_turbine.electricity[0]) for i in range(n_time_points)]
-    turb_kwh = [pyo.value(blks[i].fs.h2_turbine.turbine.work_mechanical[0]) * -1e-3 for i in range(n_time_points)]
-    comp_kwh = [pyo.value(blks[i].fs.h2_turbine.compressor.work_mechanical[0]) * 1e-3 for i in range(n_time_points)]
+    
+    turb_kgH2 = [pyo.value(blks[i].fs.h2_turbine.compressor.inlet.flow_mol[0]) * 3600 / h2_mols_per_kg for i in range(n_time_points)]
+    turbine_elec = [pyo.value(blks[i].fs.h2_turbine.electricity[0]) for i in range(n_time_points)]
     
     elec_income = [pyo.value(blks[i].profit) for i in range(n_time_points)]
     h2_revenue = [pyo.value(blks[i].hydrogen_revenue) for i in range(n_time_points)]
@@ -531,7 +531,7 @@ def wind_battery_pem_tank_turb_optimize(n_time_points, input_params, verbose=Fal
         "pem_mw": pem_cap,
         "tank_kgH2": tank_size,
         "turb_mw": turb_cap,
-        "avg_turb_eff": np.average(turb_kwh/comp_kwh),
+        "avg_turb_kWh_per_kgH2": np.average(np.array(turbine_elec)/np.array(turb_kgH2)),
         "annual_rev_h2": sum(h2_revenue) * 52 / n_weeks,
         "annual_rev_E": sum(elec_income) * 52 / n_weeks,
         "NPV": value(m.NPV)
@@ -552,7 +552,7 @@ def wind_battery_pem_tank_turb_optimize(n_time_points, input_params, verbose=Fal
         ax1[0].step(hours, wind_to_pem, label="Wind to Pem [kW]")
         ax1[0].step(hours, batt_in, label="Wind to Batt [kW]")
         ax1[0].step(hours, batt_out, label="Batt to Grid [kW]")
-        ax1[0].step(hours, h2_turbine_elec, label="H2 Turbine [kW]")
+        ax1[0].step(hours, turbine_elec, label="H2 Turbine [kW]")
         ax1[0].tick_params(axis='y', )
         ax1[0].legend()
         ax1[0].grid(visible=True, which='major', color='k', linestyle='--', alpha=0.2)

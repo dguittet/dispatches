@@ -47,6 +47,7 @@ def test_wind_battery_optimize(input_params):
     assert value(mp.pyomo_model.NPV) == pytest.approx(-1691292641, rel=1e-3)
     assert value(mp.pyomo_model.annual_revenue) == pytest.approx(-24628238, rel=1e-3)
     assert value(mp.pyomo_model.battery_system_capacity) == pytest.approx(40254, rel=1e-3)
+    assert value(mp.pyomo_model.battery_system_energy) == pytest.approx(40254, rel=1e-3)
     assert value(mp.pyomo_model.wind_system_capacity) == pytest.approx(815735, rel=1e-3)
     plot_results(*record_results(mp), input_params['opt_mode'])
 

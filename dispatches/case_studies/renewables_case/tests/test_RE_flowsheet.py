@@ -15,6 +15,7 @@
 import pytest
 import platform
 from idaes.core.util.model_statistics import degrees_of_freedom
+from PySAM.ResourceTools import SRW_to_wind_data
 
 from dispatches.unit_models import HydrogenTank as DetailedHydrogenTank
 from dispatches.case_studies.renewables_case.RE_flowsheet import *
@@ -42,7 +43,7 @@ def input_params():
                         }
                     } for t in range(8760)}
     params["wind_resource"] = wind_resource
-
+    params["batt_hr"] = 4
     params["batt_cap_cost_kw"] = 1200
     params["batt_cap_cost_kwh"] = 0
     params["batt_rep_cost_kwh"] = 150

@@ -16,7 +16,6 @@ import numpy as np
 import copy
 from pathlib import Path
 import pandas as pd
-from PySAM.ResourceTools import SRW_to_wind_data
 from pyomo.common.fileutils import this_file_dir
 
 re_case_dir = Path(this_file_dir())
@@ -91,11 +90,12 @@ default_input_params = {
     "wind_mw": fixed_wind_mw,
     "wind_mw_ub": wind_mw_ub,
     "batt_mw": fixed_batt_mw,
+    "batt_hr": 4,
     "pem_mw": fixed_pem_mw,
     "pem_bar": pem_bar,
     "pem_temp": pem_temp,
     "tank_size": fixed_tank_size,
-    "tank_type": "detailed",
+    "tank_type": "simple",
     "turb_mw": turb_p_mw,
 
     "wind_resource": wind_capacity_factors,

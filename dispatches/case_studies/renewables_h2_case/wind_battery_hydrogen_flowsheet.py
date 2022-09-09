@@ -286,13 +286,14 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         m.wind_add_system_capacity.fix(0)
 
     m.pem_cap_cost = pyo.Param(default=input_params["pem_cap_cost"], mutable=True)
-    m.batt_cap_cost = pyo.Param(default=input_params["batt_cap_cost_kw"], mutable=True)
+    m.batt_cap_cost_kw = pyo.Param(default=input_params["batt_cap_cost_kw"], mutable=True)
+    m.batt_cap_cost_kwh = pyo.Param(default=input_params["batt_cap_cost_kwh"], mutable=True)
     m.tank_cap_cost = pyo.Param(default=input_params["tank_cap_cost_per_kg"], mutable=True)
     m.turb_cap_cost = pyo.Param(default=input_params["turbine_cap_cost"], mutable=True)
 
     m.total_cap_cost = pyo.Expression(expr=m.wind_cap_cost * m.wind_add_system_capacity
-                                       + m.batt_cap_cost * m.battery_system_capacity
-                                       + m.batt_cap_cost * m.battery_system_energy
+                                       + m.batt_cap_cost_kw * m.battery_system_capacity
+                                       + m.batt_cap_cost_kwh * m.battery_system_energy
                                        + m.pem_cap_cost * m.pem_system_capacity
                                        + m.tank_cap_cost * m.h2_tank_size
                                        + m.turb_cap_cost * m.turb_system_capacity)
