@@ -15,6 +15,9 @@
 import numpy as np
 import pandas as pd
 from pathlib import Path
+import utm
+import networkx as nx
+
 
 def read_prescient_file(filepath):
     df = pd.read_csv(filepath)
@@ -253,20 +256,85 @@ def double_loop_outputs_for_gen(double_loop_dir, source_dir):
 
 
 def get_rtsgmlc_network(output_dir, source_dir):
-    source_dir = Path(source_dir)
-    df = pd.read_csv(source_dir / "branch.csv")
-    edges = df[['From Bus', 'To Bus']]
-    network = {k: [] for k in set(edges.to_numpy().flatten().tolist())}
-    for e in edges.to_numpy():
-        network[e[0]].append(e[1])
-        network[e[1]].append(e[0])
-
-    df.set_index("UID", inplace=True)
-
+    edges_df = pd.read_csv(source_dir / "branch.csv").set_index("UID")
+    nodes_df = pd.read_csv(source_dir / "bus.csv").set_index("Bus ID")
+    nodes_df.index = nodes_df.index.map(str)
     line_detail = read_prescient_file(output_dir / "line_detail.csv")
+    summary, gen_df = read_prescient_outputs(output_dir, source_dir)
+    bus_dict = {k: v for k, v in zip(nodes_df.index.values, nodes_df['Bus Name'].values)}
 
-    cont_rating = df['Cont Rating'].values.tolist()
+    # Create Network with Edge info
+    cont_rating = edges_df['Cont Rating'].values.tolist()
     line_detail['Cont Rating'] = cont_rating * len(line_detail.index.unique())
     line_detail["Relative Flow"] = np.abs(line_detail['Flow'] / line_detail['Cont Rating'])
 
-    return df, line_detail, network
+    G = nx.from_pandas_edgelist(edges_df.reset_index().astype('str'), source='From Bus', target='To Bus', edge_attr=('Cont Rating', 'LTE Rating', 'STE Rating', 'Length', "UID"))
+
+    # Fill in Node X, Y info
+    nodes_df['x'], nodes_df['y'] = utm.from_latlon(nodes_df['lat'].values, nodes_df['lng'].values)[0:2]
+
+    x_pos = (nodes_df['x'] - nodes_df['x'].mean()) / 300
+    y_pos = (nodes_df['y'] - nodes_df['y'].mean()) / 300
+    nx.set_node_attributes(G, x_pos.to_dict(), name="x")
+    nx.set_node_attributes(G, y_pos.to_dict(), name="y")
+    nx.set_node_attributes(G, nodes_df['Bus Name'].to_dict(), name="name")
+
+    # Fill in Node colors by generators
+    color_dict = {}
+    wind_buses = gen_df[gen_df['Generator'].str.contains('WIND')]['Generator'].str.slice(0, 3).unique()
+    pv_buses = gen_df[gen_df['Generator'].str.contains('PV')]['Generator'].str.slice(0, 3).unique()
+    nuc_buses = gen_df[gen_df['Generator'].str.contains('NUCLEAR')]['Generator'].str.slice(0, 3).unique()
+
+    for n in G.nodes:
+        if n in wind_buses and n in pv_buses and n in nuc_buses:
+            color = 'white'
+        elif n in wind_buses and n in pv_buses:
+            color = 'green'
+        elif n in wind_buses and n in nuc_buses:
+            color = "purple"
+        elif n in pv_buses and n in nuc_buses:
+            color = 'orange'
+        elif n in wind_buses:
+            color = 'blue'
+        elif n in pv_buses:
+            color = 'yellow'
+        elif n in nuc_buses:
+            color = "red"
+        else:
+            color = 'grey'
+        color_dict[n] = color
+    nx.set_node_attributes(G, color_dict, name="color")
+
+    # Add Edge Width for Rating and congestion for color
+    line_detail['Relative OverFlow'] = (line_detail['Relative Flow'] >= 0.95).astype(int) * line_detail['Relative Flow']
+    edges_df['Relative OverFlow'] = line_detail.set_index('Line')['Relative OverFlow'].groupby('Line').mean()
+    edges_df['Relative Flow'] = line_detail.set_index('Line')['Relative Flow'].groupby('Line').mean()
+    edges_df
+
+    avg_LMP_diff = []
+    for (i, j) in edges_df[['From Bus', 'To Bus']].values:
+        LMP_diff = (summary.query(f"Bus == '{bus_dict[str(i)]}'")['LMP'] - summary.query(f"Bus == '{bus_dict[str(j)]}'")['LMP']).abs()
+        avg_LMP_diff.append(LMP_diff.mean())
+    edges_df['Avg LMP Diff'] = avg_LMP_diff
+    edges_df
+
+    edges_dict = {}
+    edge_color_val = 'Avg LMP Diff' # or 'Relative OverFlow'
+    max_cong = edges_df[edge_color_val].max()
+    for (i, j, w, o) in edges_df[['From Bus', 'To Bus', 'Cont Rating', edge_color_val]].values:
+        if o != 0:
+            rel_cong = o / max_cong
+            gb =  75 + int(180 * rel_cong)
+            color = '#%02x%02x%02x' % (gb, 0, 0)
+        else:
+            color = 'black'
+    for (i, j, w, o) in edges_df[['From Bus', 'To Bus', 'Cont Rating', edge_color_val]].values:
+        if o != 0:
+            rel_cong = o / max_cong
+            gb =  75 + int(180 * rel_cong)
+            color = '#%02x%02x%02x' % (gb, 0, 0)
+        else:
+            color = 'black'
+        edges_dict[(str(int(i)), str(int(j)))] = {'width': w / 60, 'color': color, 'title': str(round(o, 2)), edge_color_val: o}
+    nx.set_edge_attributes(G, edges_dict)
+    return G, line_detail, edges_df, gen_df, summary
