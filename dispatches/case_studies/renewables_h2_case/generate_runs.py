@@ -20,7 +20,6 @@ batt_kwh_cost_ratios = np.linspace(.2, .4, n_samples)
 pem_cap_costs = np.linspace(1200, 2000, n_samples)
 tank_cap_costs = np.linspace(375, 625, n_samples)
 turbine_cap_costs = np.linspace(750, 1250, n_samples)
-
 turb_conv_rates = np.linspace(10, 25, n_samples)
 
 all_runs = list(product(h2_prices, batt_kw_costs, batt_kwh_cost_ratios, pem_cap_costs, tank_cap_costs, turbine_cap_costs, turb_conv_rates))
@@ -81,14 +80,16 @@ with open(output_dir / "simulate.json", 'w') as f:
     json.dump(jade_file, f)
 
 python_script = """import json
-import sys
+import sys, os
 from pathlib import Path
 from pyomo.common.tempfiles import TempfileManager
 from dispatches.case_studies.renewables_h2_case.re_h2_parameters import get_gen_outputs_from_rtsgmlc
 from dispatches.case_studies.renewables_h2_case.wind_battery_hydrogen_flowsheet import wind_battery_hydrogen_optimize
 
-TempfileManager.tempdir = os.environ.get("LOCAL_SCRATCH")
+if os.environ.get("SLURMD_NODENAME"):
+    TempfileManager.tempdir = os.environ.get("LOCAL_SCRATCH")
 
+params_file = Path(sys.argv[1])
 run_id = params_file.stem.split("_")[1]
 result_file = params_file.parent / f"results_{run_id}.json"
 
