@@ -75,11 +75,14 @@ def read_rts_gmlc_wind_inputs_with_fix(source_dir, gen_df, aggfunc='first'):
     """
     For simulations that don't start at 01-01, the time index of the CF here may be shifted by one day relative to the output reported from renewables_detail.csv.
     To check that the time indices are correct, compare the DA output with the CF and make sure that the output never exceeds the CF.
+
+    Use '317_WIND_1' to checkt he issue with the timestep. If the check passes with 317_wind_1 it should pass for the others as well.
+
     """
-    gen_example='317_WIND_1'
+    gen_317_WIND_1='317_WIND_1'
     pmax_317_WIND_1 = 799.1
 
-    gen_wind = gen_df[gen_df['Generator'] == gen_example]
+    gen_wind = gen_df[gen_df['Generator'] == gen_317_WIND_1]
 
     wind_df = read_rts_gmlc_wind_inputs(source_dir, None, aggfunc)
 
@@ -87,23 +90,23 @@ def read_rts_gmlc_wind_inputs_with_fix(source_dir, gen_df, aggfunc='first'):
         assert (wind_df.index == gen_wind.index).all()
         wind_cfs = wind_df
         # DA cfs should have no problems
-        if not (wind_cfs['317_WIND_1-RTCF'] * pmax_317_WIND_1 - gen_wind['Output']).min() > -1e-4:
+        if not (wind_cfs[f'{gen_317_WIND_1}-RTCF'] * pmax_317_WIND_1 - gen_wind['Output']).min() > -1e-4:
             # try to fix by changing the agg func
-            wind_cfs = read_rts_gmlc_wind_inputs(source_dir, gen_example, agg_func='mean')
+            wind_cfs = read_rts_gmlc_wind_inputs(source_dir, gen_317_WIND_1, agg_func='mean')
     else:
         wind_cfs = wind_df[wind_df.index.isin(gen_wind.index)]
-        if not (wind_cfs['317_WIND_1-DACF'] * pmax_317_WIND_1 - gen_wind['Output DA']).min() > -1e-4:
+        if not (wind_cfs[f'{gen_317_WIND_1}-DACF'] * pmax_317_WIND_1 - gen_wind['Output DA']).min() > -1e-4:
             # try shifting the time index
             for c in wind_df.columns:
                 wind_df[c] = np.roll(wind_df[c].values, 1)
             wind_cfs = wind_df[wind_df.index.isin(gen_wind.index)]
-        if not (wind_cfs['317_WIND_1-RTCF'] * pmax_317_WIND_1 - gen_wind['Output']).min() > -1e-4:
+        if not (wind_cfs[f'{gen_317_WIND_1}-RTCF'] * pmax_317_WIND_1 - gen_wind['Output']).min() > -1e-4:
             # try to fix by changing the agg func
             if aggfunc != 'mean':
                 wind_cfs = read_rts_gmlc_wind_inputs_with_fix(source_dir, gen_df, aggfunc='mean')
 
-    assert (wind_cfs['317_WIND_1-DACF'] * pmax_317_WIND_1 - gen_wind['Output DA']).min() > -1e-4
-    assert (wind_cfs['317_WIND_1-RTCF'] * pmax_317_WIND_1 - gen_wind['Output']).min() > -1e-4
+    assert (wind_cfs[f'{gen_317_WIND_1}-DACF'] * pmax_317_WIND_1 - gen_wind['Output DA']).min() > -1e-4
+    assert (wind_cfs[f'{gen_317_WIND_1}-RTCF'] * pmax_317_WIND_1 - gen_wind['Output']).min() > -1e-4
 
     return wind_cfs
     
@@ -196,7 +199,7 @@ def prescient_outputs_for_gen(output_dir, source_dir, gen_name):
     df = pd.concat([summary, gen_df], axis=1)
 
     if 'WIND' in gen_name:
-        wind_forecast_df = read_rts_gmlc_wind_inputs(source_dir, gen_name)
+        wind_forecast_df = read_rts_gmlc_wind_inputs_with_fix(source_dir, gen_name)
         wind_forecast_df = wind_forecast_df[wind_forecast_df.index.isin(df.index)]
         df = pd.concat([df, wind_forecast_df], axis=1)
     return df
