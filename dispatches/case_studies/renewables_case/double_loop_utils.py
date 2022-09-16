@@ -255,7 +255,7 @@ def double_loop_outputs_for_gen(double_loop_dir, source_dir):
     return df.dropna(axis=1, how='all')
 
 
-def get_rtsgmlc_network(output_dir, source_dir):
+def get_rtsgmlc_network(output_dir, source_dir, length_scaling=1/300, width_scaling=1/75):
     edges_df = pd.read_csv(source_dir / "branch.csv").set_index("UID")
     nodes_df = pd.read_csv(source_dir / "bus.csv").set_index("Bus ID")
     nodes_df.index = nodes_df.index.map(str)
@@ -273,8 +273,8 @@ def get_rtsgmlc_network(output_dir, source_dir):
     # Fill in Node X, Y info
     nodes_df['x'], nodes_df['y'] = utm.from_latlon(nodes_df['lat'].values, nodes_df['lng'].values)[0:2]
 
-    x_pos = (nodes_df['x'] - nodes_df['x'].mean()) / 300
-    y_pos = (nodes_df['y'] - nodes_df['y'].mean()) / 300
+    x_pos = (nodes_df['x'] - nodes_df['x'].mean()) * length_scaling
+    y_pos = (nodes_df['y'] - nodes_df['y'].mean()) * length_scaling
     nx.set_node_attributes(G, x_pos.to_dict(), name="x")
     nx.set_node_attributes(G, y_pos.to_dict(), name="y")
     nx.set_node_attributes(G, nodes_df['Bus Name'].to_dict(), name="name")
@@ -335,6 +335,6 @@ def get_rtsgmlc_network(output_dir, source_dir):
             color = '#%02x%02x%02x' % (gb, 0, 0)
         else:
             color = 'black'
-        edges_dict[(str(int(i)), str(int(j)))] = {'width': w / 60, 'color': color, 'title': str(round(o, 2)), edge_color_val: o}
+        edges_dict[(str(int(i)), str(int(j)))] = {'width': w * width_scaling, 'color': color, 'title': str(round(o, 2)), edge_color_val: o}
     nx.set_edge_attributes(G, edges_dict)
     return G, line_detail, edges_df, gen_df, summary
