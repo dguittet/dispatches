@@ -21,7 +21,12 @@ def create_multiperiod_wind_battery_hydrogen_model(n_time_points, wind_capacity_
     Returns:
         MultiPeriodModel: a MultiPeriodModel for the wind battery hydrogen model.
     """
-    input_params["wind_resource"] = wind_capacity_factors
+    input_params["wind_resource"] = {t:
+                                        {'wind_resource_config': {
+                                            'capacity_factor': 
+                                                [wind_capacity_factors[t]]}} for t in range(len(wind_capacity_factors))}
+
+
 
      # create the multiperiod model object
     mp_wind_battery_hydrogen = MultiPeriodModel(
