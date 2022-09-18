@@ -402,7 +402,8 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         "annual_under_power": sum(under_power) * 52/ n_weeks,
         "annual_rev_h2": sum(h2_revenue) * 52 / n_weeks,
         "annual_rev_E": sum(elec_income) * 52 / n_weeks,
-        "NPV": value(m.NPV)
+        "NPV": value(m.NPV),
+        "capital_cost": value(m.total_cap_cost)
     }
 
     print(design_res)

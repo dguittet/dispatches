@@ -108,7 +108,7 @@ def test_tracking(mp_model):
     )
 
     dispatch = mp_model._design_params['load'][0:24]
-    profiles = tracker_object.track_market_dispatch(dispatch, '2020-06-01', 0)
+    tracker_object.track_market_dispatch(dispatch, '2020-06-01', 0)
 
     assert tracker_object.result_list[0]['Power Underdelivered [MW]'].sum() == 0
     assert tracker_object.result_list[0]['Power Overdelivered [MW]'].sum() == 0
