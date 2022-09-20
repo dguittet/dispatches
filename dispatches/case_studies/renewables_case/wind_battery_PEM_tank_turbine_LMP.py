@@ -391,7 +391,7 @@ def wind_battery_pem_tank_turb_optimize(n_time_points, input_params, verbose=Fal
     m.wind_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['wind_mw'] * 1e3, units=pyo.units.kW, bounds=(0, input_params['wind_mw_ub'] * 1e3))
     m.battery_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['batt_mw'] * 1e3, units=pyo.units.kW)
     m.battery_system_energy = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['batt_mw'] * 1e3 
-                                                                              * input_params['batt_hr'] if "batt_hr" in input_params.keys() else 1, units=pyo.units.kWh)
+                                                                              * (input_params['batt_hr'] if "batt_hr" in input_params.keys() else 1), units=pyo.units.kWh)
     m.pem_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['pem_mw'] * 1e3, units=pyo.units.kW)
     m.h2_tank_size = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['tank_size'], units=pyo.units.kg)
     m.turb_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['turb_mw'] * 1e3, units=pyo.units.kW)

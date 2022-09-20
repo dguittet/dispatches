@@ -16,6 +16,7 @@ from dispatches.case_studies.renewables_case.wind_battery_LMP import (
     wind_battery_mp_block,
     wind_battery_variable_pairs,
     wind_battery_periodic_variable_pairs,
+    default_input_params
 )
 from idaes.apps.grid_integration.multiperiod.multiperiod import MultiPeriodModel
 import pyomo.environ as pyo
@@ -145,10 +146,11 @@ class MultiPeriodWindBattery:
         if not blk.is_constructed():
             blk.construct()
 
-        input_params = {
+        input_params = default_input_params.copy()
+        input_params.update({
             'wind_mw': self._wind_pmax_mw,
-            'batt_mw': self._battery_pmax_mw
-        }
+            'batt_mw': self._battery_pmax_mw,
+        })
         blk.windBattery = create_multiperiod_wind_battery_model(horizon, wind_cfs=self._wind_capacity_factors[0:horizon], input_params=input_params)
         transform_design_model_to_operation_model(
             mp_wind_battery=blk.windBattery,

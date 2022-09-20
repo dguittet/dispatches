@@ -36,7 +36,7 @@ import pandas as pd
 from pathlib import Path
 from dispatches_sample_data import rts_gmlc
 
-if not check_min_version(idaes, '2.0.0.a4'):
+if not check_min_version(idaes, '2.0.0.dev0'):
     raise EnvironmentError("This notebook requires the 2.0.0.a4 pre-release of idaes-pse, which can be found here: https://github.com/dguittet/idaes-pse/tree/2.0.0.a4")
 
 this_file_path = Path(this_file_dir())

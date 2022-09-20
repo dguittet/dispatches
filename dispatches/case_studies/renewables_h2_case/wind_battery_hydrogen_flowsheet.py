@@ -13,7 +13,7 @@
 #
 #################################################################################
 from functools import partial
-import numbers
+import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import pyomo.environ as pyo
@@ -210,11 +210,18 @@ def size_constraints(mp_model, input_params):
     if not input_params['build_add_wind']:
         m.wind_add_system_capacity.fix(0)
     m.battery_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['batt_mw'] * 1e3, units=pyo.units.kW)
-    m.battery_system_energy = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['batt_mw'] * 1e3 * input_params['batt_hr'] 
-                                                                              if 'batt_hr' in input_params.keys() else 1, units=pyo.units.kWh)
+    m.battery_system_energy = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['batt_mw'] * 1e3 * (input_params['batt_hr'] 
+                                                                              if 'batt_hr' in input_params.keys() else 1), units=pyo.units.kWh)
     m.pem_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['pem_mw'] * 1e3, units=pyo.units.kW)
     m.h2_tank_size = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['tank_size'], units=pyo.units.kg)
     m.turb_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['turb_mw'] * 1e3, units=pyo.units.kW)
+
+    if not input_params['design_opt']:
+        m.battery_system_capacity.fix()
+        m.battery_system_energy.fix()
+        m.pem_system_capacity.fix()
+        m.h2_tank_size.fix()
+        m.turb_system_capacity.fix()
 
     m.wind_max_p = pyo.Constraint(mp_model.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.windpower.system_capacity <= m.wind_system_capacity + m.wind_add_system_capacity)
     m.battery_max_p = pyo.Constraint(mp_model.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.battery.nameplate_power <= m.battery_system_capacity)
@@ -370,12 +377,15 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     h2_tank_in = [pyo.value(blks[i].fs.h2_tank.inlet.flow_mol[0] * 3600 / h2_mols_per_kg) for i in range(n_time_points)]
     h2_tank_out = [pyo.value((blks[i].fs.h2_tank.outlet_to_pipeline.flow_mol[0] + blks[i].fs.h2_tank.outlet_to_turbine.flow_mol[0]) * 3600 / h2_mols_per_kg) for i in range(n_time_points)]
     h2_tank_holdup = [pyo.value(blks[i].fs.h2_tank.tank_holdup[0]) / h2_mols_per_kg for i in range(n_time_points)]
+    h2_sales = [pyo.value(blks[i].fs.h2_tank.outlet_to_pipeline.flow_mol[0] * 3600 / h2_mols_per_kg) for i in range(n_time_points)]
+    h2_turbine_in = [pyo.value(blks[i].fs.h2_tank.outlet_to_turbine.flow_mol[0] * 3600 / h2_mols_per_kg) for i in range(n_time_points)]
 
     wind_gen = [pyo.value(blks[i].fs.windpower.electricity[0]) for i in range(n_time_points)]
     wind_out = [pyo.value(blks[i].fs.splitter.grid_elec[0]) for i in range(n_time_points)]
     wind_to_pem = [pyo.value(blks[i].fs.pem.electricity[0]) for i in range(n_time_points)]
     batt_out = [pyo.value(blks[i].fs.battery.elec_out[0]) for i in range(n_time_points)]
     batt_in = [pyo.value(blks[i].fs.battery.elec_in[0]) for i in range(n_time_points)]
+    batt_soc = [pyo.value(blks[i].fs.battery.state_of_charge[0]) for i in range(n_time_points)]
     h2_turbine_elec = [pyo.value(blks[i].fs.h2_turbine_elec) for i in range(n_time_points)]
     
     elec_income = [pyo.value(blks[i].profit) for i in range(n_time_points)]
@@ -451,12 +461,27 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
 
     plt.show()
 
-    return design_res
+    df = pd.DataFrame(index=range(n_time_points))
+    df['Total Wind Generation [MW]'] = np.array(wind_gen) * 1e-3
+    df['Total Power Output [MW]'] = np.sum((wind_out, batt_out, h2_turbine_elec), axis=0) * 1e-3
+    df['Wind Power Output [MW]'] = np.array(wind_out) * 1e-3
+    df['Wind Power to Battery [MW]'] = np.array(batt_in) * 1e-3
+    df['State of Charge [MWh]'] = np.array(batt_soc) * 1e-3
+    df['Battery Power Output [MW]'] = np.array(batt_out) * 1e-3
+    df['Wind Power to PEM [MW]'] = np.array(wind_to_pem) * 1e-3
+    df['PEM H2 Output [kg]'] = np.array(h2_prod)
+    df['Tank H2 Input [kg]'] = np.array(h2_tank_in)
+    df['H2 Sales [kg]'] = np.array(h2_sales)
+    df['Turbine H2 Input [kg]"'] = np.array(h2_turbine_in)
+    df['Tank Holdup [kg]'] = np.array(h2_tank_holdup)
+    df['Turbine Power Output [MW]'] = np.array(h2_turbine_elec) * 1e-3
+
+    return design_res, df
 
 
 if __name__ == "__main__":
     re_h2_parameters["pem_cap_cost"] *= 0.1
     re_h2_parameters["h2_price_per_kg"] = 5
     re_h2_parameters["turbine_cap_cost"] *= 0.1
-    des_res = wind_battery_hydrogen_optimize(n_time_points=int(8760/12), input_params=re_h2_parameters, verbose=False, plot=False)
+    des_res, df_res = wind_battery_hydrogen_optimize(n_time_points=int(8760/12), input_params=re_h2_parameters, verbose=False, plot=False)
     print(des_res)
