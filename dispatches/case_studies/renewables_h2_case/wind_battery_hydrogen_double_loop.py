@@ -25,8 +25,7 @@ def create_multiperiod_wind_battery_hydrogen_model(n_time_points, wind_capacity_
                                         {'wind_resource_config': {
                                             'capacity_factor': 
                                                 [wind_capacity_factors[t]]}} for t in range(len(wind_capacity_factors))}
-
-
+    input_params["batt_hr"] = input_params['batt_mwh'] / input_params['batt_mw']
 
      # create the multiperiod model object
     mp_wind_battery_hydrogen = MultiPeriodModel(
@@ -45,12 +44,6 @@ def create_multiperiod_wind_battery_hydrogen_model(n_time_points, wind_capacity_
 
 def transform_design_model_to_operation_model(
     mp_wind_battery_hydrogen,
-    wind_capacity,
-    battery_power_capacity,
-    battery_energy_capacity,
-    pem_capacity,
-    h2_tank_size_kg,
-    h2_turb_capacity
 ):
     """Transform the multiperiod wind battery design model to operation model.
 
@@ -67,13 +60,6 @@ def transform_design_model_to_operation_model(
     blks = mp_wind_battery_hydrogen.get_active_process_blocks()
 
     for t, b in enumerate(blks):
-        b.fs.windpower.system_capacity.fix(wind_capacity)
-        b.fs.battery.nameplate_power.fix(battery_power_capacity)
-        b.fs.battery.nameplate_energy.fix(battery_energy_capacity)
-        b.fs.pem.electricity.setub(pem_capacity)
-        b.fs.h2_tank.tank_holdup.setub(h2_tank_size_kg * h2_mols_per_kg)
-        b.fs.turb_max_p = pyo.Constraint(expr=b.fs.h2_turbine_elec <= h2_turb_capacity)
-
         if t == 0:
             b.fs.battery.initial_state_of_charge.fix()
 
@@ -127,6 +113,7 @@ class MultiPeriodWindBatteryHydrogen:
         self.model_data = model_data
         self._wind_capacity_factors = wind_capacity_factors
         self._design_params = input_params
+        self._horizon = 0
 
         # a list that holds all the result in pd DataFrame
         self.result_list = []
@@ -142,16 +129,11 @@ class MultiPeriodWindBatteryHydrogen:
         if not blk.is_constructed():
             blk.construct()
 
+        self._horizon = horizon
         blk.windBatteryHydrogen = create_multiperiod_wind_battery_hydrogen_model(horizon, 
             self._wind_capacity_factors, self._design_params)
         transform_design_model_to_operation_model(
-            mp_wind_battery_hydrogen=blk.windBatteryHydrogen,
-            wind_capacity=self._design_params['wind_mw'] * 1e3,
-            battery_power_capacity=self._design_params['batt_mw'] * 1e3,
-            battery_energy_capacity=self._design_params['batt_mwh'] * 1e3,
-            pem_capacity=self._design_params['pem_mw'] * 1e3,
-            h2_tank_size_kg=self._design_params['tank_size'],
-            h2_turb_capacity=self._design_params['turb_mw'] * 1e3
+            mp_wind_battery_hydrogen=blk.windBatteryHydrogen
         )
         blk.pyomo_model = blk.windBatteryHydrogen.pyomo_model
 
@@ -168,12 +150,16 @@ class MultiPeriodWindBatteryHydrogen:
         blk.HOUR = pyo.Set(initialize=range(horizon))
         blk.P_T = pyo.Expression(blk.HOUR)
         blk.tot_cost = pyo.Expression(blk.HOUR)
-        blk.wind_waste_penalty = pyo.Param(default=1e3, mutable=True)
+        blk.wind_waste_penalty = pyo.Param(default=1e6, mutable=True)
         blk.wind_waste = pyo.Expression(blk.HOUR)
+        # blk.battery_priority_penalty = pyo.Param(default=0, mutable=True)
+        # blk.battery_priority = pyo.Expression(blk.HOUR)
         for (t, b) in enumerate(active_blks):
             blk.P_T[t] = (b.fs.splitter.grid_elec[0] + b.fs.battery.elec_out[0] + b.fs.h2_turbine_elec) * 1e-3
             blk.wind_waste[t] = (b.fs.windpower.system_capacity * b.fs.windpower.capacity_factor[0] - b.fs.windpower.electricity[0]) * 1e-3
-            blk.tot_cost[t] = b.op_total_cost + blk.wind_waste_penalty * blk.wind_waste[t]
+            # blk.battery_priority[t] = (b.fs.h2_tank.inlet.flow_mol[0] * 3600 / h2_mols_per_kg * self._design_params['turb_conv'] - b.fs.battery.elec_in[0]) * 1e-3
+            # blk.tot_cost[t] = b.op_total_cost + blk.wind_waste_penalty * blk.wind_waste[t] + blk.battery_priority_penalty * blk.battery_priority[t]
+            blk.tot_cost[t] = b.op_total_cost + blk.wind_waste_penalty * blk.wind_waste[t] 
 
         return
 
