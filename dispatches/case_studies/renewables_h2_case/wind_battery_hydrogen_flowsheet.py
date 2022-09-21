@@ -21,7 +21,7 @@ import idaes.logger as idaeslog
 from pyomo.util.infeasible import log_infeasible_constraints, log_infeasible_bounds, log_close_to_bounds
 from idaes.apps.grid_integration.multiperiod.multiperiod import MultiPeriodModel
 from dispatches.case_studies.renewables_case.RE_flowsheet import create_model, propagate_state, value, h2_mols_per_kg, PA, battery_ramp_rate
-from dispatches.case_studies.renewables_h2_case.re_h2_parameters import re_h2_parameters
+from dispatches.case_studies.renewables_h2_case.re_h2_parameters import re_h2_parameters, kg_to_tons
 
 
 def wind_battery_hydrogen_variable_pairs(m1, m2):
@@ -77,7 +77,7 @@ def wind_battery_hydrogen_om_costs(m, input_params):
     )
 
 
-def initialize_fs(m, verbose=False):
+def initialize_fs(m, tank_holdup_init=0, verbose=False):
     """
     Initializing the flowsheet is done starting with the wind model and propagating the solved initial state to downstream models.
 
@@ -121,7 +121,7 @@ def initialize_fs(m, verbose=False):
 
     m.fs.h2_tank.outlet_to_turbine.flow_mol[0].fix(value(m.fs.h2_tank.inlet.flow_mol[0]))
     m.fs.h2_tank.outlet_to_pipeline.flow_mol[0].fix(0)
-    m.fs.h2_tank.tank_holdup_previous.fix(0)
+    m.fs.h2_tank.tank_holdup_previous.fix(tank_holdup_init)
     m.fs.h2_tank.initialize(outlvl=outlvl)
     m.fs.h2_tank.outlet_to_turbine.flow_mol[0].unfix()
     m.fs.h2_tank.outlet_to_pipeline.flow_mol[0].unfix()
@@ -148,7 +148,7 @@ def wind_battery_hydrogen_model(wind_resource_config, input_params, verbose):
     m.fs.battery.initial_state_of_charge.fix(0)
     m.fs.battery.initial_energy_throughput.fix(0)
 
-    initialize_fs(m, verbose=verbose)
+    initialize_fs(m, input_params['tank_holdup_init'], verbose=verbose)
 
     m.fs.battery.initial_state_of_charge.unfix()
     m.fs.battery.initial_energy_throughput.unfix()
@@ -210,8 +210,8 @@ def size_constraints(mp_model, input_params):
     if not input_params['build_add_wind']:
         m.wind_add_system_capacity.fix(0)
     m.battery_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['batt_mw'] * 1e3, units=pyo.units.kW)
-    m.battery_system_energy = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['batt_mw'] * 1e3 * (input_params['batt_hr'] 
-                                                                              if 'batt_hr' in input_params.keys() else 1), units=pyo.units.kWh)
+    m.battery_system_energy = pyo.Var(domain=pyo.NonNegativeReals, initialize=(input_params['batt_mwh'] if 'batt_mwh' in input_params.keys()
+                                                                                else (input_params['batt_mw'] * input_params['batt_hr'])) * 1e3, units=pyo.units.kWh)
     m.pem_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['pem_mw'] * 1e3, units=pyo.units.kW)
     m.h2_tank_size = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['tank_size'], units=pyo.units.kg)
     m.turb_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['turb_mw'] * 1e3, units=pyo.units.kW)
@@ -399,7 +399,7 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     batt_energy = value(m.battery_system_energy) * 1e-3
 
     pem_cap = value(m.pem_system_capacity) * 1e-3
-    tank_size = value(m.h2_tank_size) * 0.00110231 # to ton
+    tank_size = value(m.h2_tank_size) * kg_to_tons # to ton
     turb_cap = value(m.turb_system_capacity) * 1e-3
 
     design_res = {

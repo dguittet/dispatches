@@ -25,7 +25,6 @@ def create_multiperiod_wind_battery_hydrogen_model(n_time_points, wind_capacity_
                                         {'wind_resource_config': {
                                             'capacity_factor': 
                                                 [wind_capacity_factors[t]]}} for t in range(len(wind_capacity_factors))}
-    input_params["batt_hr"] = input_params['batt_mwh'] / input_params['batt_mw']
 
      # create the multiperiod model object
     mp_wind_battery_hydrogen = MultiPeriodModel(
@@ -49,12 +48,6 @@ def transform_design_model_to_operation_model(
 
     Args:
         mp_wind_battery_hydrogen (MultiPeriodModel): a created multiperiod wind battery object
-        wind_capacity (float): wind farm capapcity in KW
-        battery_power_capacity (float): battery power output capacity in KW
-        battery_energy_capacity (float): battery energy capacity in KW
-        pem_capacity (float): pem power capacity in KW
-        h2_tank_size_kg (float): max kg of H2 of the tank
-        h2_turb_capacity (float): max KW output of H2 turbine
     """
 
     blks = mp_wind_battery_hydrogen.get_active_process_blocks()
@@ -62,6 +55,7 @@ def transform_design_model_to_operation_model(
     for t, b in enumerate(blks):
         if t == 0:
             b.fs.battery.initial_state_of_charge.fix()
+            b.fs.h2_tank.tank_holdup_previous.fix()
 
         # deactivate periodic boundary condition
         if t == len(blks) - 1:

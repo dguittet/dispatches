@@ -1,6 +1,7 @@
 import copy
 from pathlib import Path
 import os
+import json
 import pandas as pd
 import pyomo.environ as pyo
 from pyomo.common.fileutils import this_file_dir
@@ -9,7 +10,7 @@ from idaes.apps.grid_integration.model_data import ThermalGeneratorModelData
 from idaes.apps.grid_integration import Tracker
 from dispatches.case_studies.renewables_h2_case.wind_battery_hydrogen_flowsheet import wind_battery_hydrogen_optimize
 from dispatches.case_studies.renewables_h2_case.wind_battery_hydrogen_double_loop import MultiPeriodWindBatteryHydrogen
-from dispatches.case_studies.renewables_h2_case.re_h2_parameters import re_h2_parameters, get_gen_outputs_from_rtsgmlc
+from dispatches.case_studies.renewables_h2_case.re_h2_parameters import re_h2_parameters, get_gen_outputs_from_rtsgmlc, kg_to_tons
 
 re_h2_dir = Path(this_file_dir())
 
@@ -36,7 +37,7 @@ params["wind_mw"] = hybrid_wind_mw
 params["batt_mw"] = hybrid_batt_mw
 params["batt_mwh"] = hybrid_batt_mwh
 params["pem_mw"] = hybrid_pem_mw
-params["tank_tonH2"] = hybrid_tank_tonH2
+params["tank_size"] = hybrid_tank_tonH2 / kg_to_tons
 params["turb_mw"] = hybrid_turb_mw
 params["turb_conv"] = hybrid_turb_conv
 
@@ -54,11 +55,17 @@ results_dir = re_h2_dir / f"double_loop_{gas_gen}_{round(hybrid_pmax)}"
 if not results_dir.exists():
     os.mkdir(results_dir)
 
-if (results_dir / "design_results.csv").exists():
-    res_df = pd.read_csv(results_dir / "design_results.csv")
+if (results_dir / "design_timeseries.csv").exists():
+    res_df = pd.read_csv(results_dir / "design_timeseries.csv")
+    with open(results_dir / "design_sizes.json", 'r') as f:
+        des_res = json.load(f)
 else:
     des_res, res_df = wind_battery_hydrogen_optimize(n_time_points=n_time_points, input_params=params, verbose=False, plot=False)
-    res_df.to_csv(results_dir / "design_results.csv")
+    res_df.to_csv(results_dir / "design_timeseries.csv")
+    with open(results_dir / "design_sizes.json", 'w') as f:
+        json.dump(des_res, f)
+
+params['tank_holdup_init'] = res_df["Tank Holdup [kg]"].values[-1]
 
 generator_params = {
     "gen_name": wind_gen,

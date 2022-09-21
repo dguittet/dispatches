@@ -68,6 +68,7 @@ re_h2_parameters = {
     "tank_size": fixed_tank_size,
     "turb_mw": turb_p_mw,
     "turb_conv": turb_conv_rate,
+    "tank_holdup_init": 0,
 
     "wind_resource": wind_resource,
     "h2_price_per_kg": h2_price_per_kg,
