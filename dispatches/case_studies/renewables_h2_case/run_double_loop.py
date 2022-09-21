@@ -32,7 +32,7 @@ hybrid_turb_mw = 45.985
 hybrid_turb_conv = 10
 h2_price_per_kg = 2.0
 
-params["wind_mw"] = wind_gen_pmax
+params["wind_mw"] = hybrid_wind_mw
 params["batt_mw"] = hybrid_batt_mw
 params["batt_mwh"] = hybrid_batt_mwh
 params["pem_mw"] = hybrid_pem_mw
@@ -43,8 +43,9 @@ params["turb_conv"] = hybrid_turb_conv
 params["wind_resource"] = wind_resource
 params["load"] = loads_mw
 params["shortfall_price"] = shortfall
-params["h2_price_per_kg"] = h2_price_per_kg * 0
+params["h2_price_per_kg"] = h2_price_per_kg
 params["design_opt"] = False
+params["build_add_wind"] = False
 
 hybrid_pmax = wind_gen_pmax + params['batt_mw'] + params['turb_mw']
 n_time_points = len(wind_cfs)
@@ -94,19 +95,26 @@ for n, datetime in enumerate(df.index):
     if not len(dispatch):
         break
     date, hour = str(datetime).split(' ')
+    print(n, date, hour)
     profiles = tracker_object.track_market_dispatch(dispatch, date, hour)
-    tracker_object.update_model(**profiles)
+    try:
+        tracker_object.update_model(**profiles)
+    except:
+        break
 
 tracker_object.write_results(results_dir)
 
 tracker_model_df = pd.read_csv(results_dir/"tracking_model_detail.csv")
+tracker_model_df = tracker_model_df[tracker_model_df["Horizon [hr]"] == 0]
 tracker_df = pd.read_csv(results_dir/"tracker_detail.csv")
+tracker_df = tracker_df[tracker_df["Horizon [hr]"] == 0]
 
-n = len(res_df)
-((wind_cfs * wind_gen_pmax)[0:n] - res_df['Wind Power Output [MW]']).min()
-((wind_cfs * wind_gen_pmax)[0:n] - tracker_model_df['Wind Power Output [MW]']).min()
 
-(wind_cfs * wind_gen_pmax)[0:n] - res_df['Wind Power Output [MW]']
-tracker_model_df['Wind Power Output [MW]'] - (wind_cfs * wind_gen_pmax)[0:n]
-tracker_model_df['Wind Power Output [MW]'].values - res_df['Wind Power Output [MW]'].values
-tracker_model_df['Total Power Output [MW]'].values - res_df['Total Power Output [MW]'].values
+n = len(tracker_model_df)
+((wind_cfs * hybrid_wind_mw)[0:n] - res_df['Wind Power Output [MW]'][0:n]).min()
+((wind_cfs * hybrid_wind_mw)[0:n] - tracker_model_df['Wind Power Output [MW]']).min()
+
+(wind_cfs * hybrid_wind_mw)[0:n] - res_df['Wind Power Output [MW]'][0:n]
+tracker_model_df['Wind Power Output [MW]'] - (wind_cfs * hybrid_wind_mw)[0:n]
+tracker_model_df['Wind Power Output [MW]'].values - res_df['Wind Power Output [MW]'].values[0:n]
+tracker_model_df['Total Power Output [MW]'].values - res_df['Total Power Output [MW]'].values[0:n]

@@ -65,7 +65,7 @@ def transform_design_model_to_operation_model(
 
         # deactivate periodic boundary condition
         if t == len(blks) - 1:
-            b.periodic_constraints[0].deactivate()
+            b.periodic_constraints.deactivate()
 
     return
 
@@ -208,10 +208,13 @@ class MultiPeriodWindBatteryHydrogen:
         """
 
         horizon_len = len(b.windBatteryHydrogen.get_active_process_blocks())
+        start_ind = pyo.value(b._time_idx)
         ans = self._wind_capacity_factors[
-            pyo.value(b._time_idx) : pyo.value(b._time_idx) + horizon_len
+            start_ind : start_ind + horizon_len
         ]
-
+        if len(ans) < horizon_len:
+            start_ind -= len(self._wind_capacity_factors) - len(ans)
+            ans += self._wind_capacity_factors[start_ind:start_ind + horizon_len - len(ans)]
         return ans
 
     @staticmethod
