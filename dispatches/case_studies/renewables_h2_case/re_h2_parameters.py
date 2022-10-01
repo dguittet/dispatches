@@ -74,6 +74,7 @@ re_h2_parameters = {
     "h2_price_per_kg": h2_price_per_kg,
 
     "build_add_wind": True,
+    "design_opt": True,
 
     "opt_mode": "meet_load",
     "load": loads_mw,

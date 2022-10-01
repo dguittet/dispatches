@@ -77,7 +77,7 @@ def wind_battery_hydrogen_om_costs(m, input_params):
     )
 
 
-def initialize_fs(m, tank_holdup_init=0, verbose=False):
+def initialize_fs(m, input_params=dict(), verbose=False):
     """
     Initializing the flowsheet is done starting with the wind model and propagating the solved initial state to downstream models.
 
@@ -105,11 +105,18 @@ def initialize_fs(m, tank_holdup_init=0, verbose=False):
     propagate_state(m.fs.splitter_to_pem)
     propagate_state(m.fs.splitter_to_battery)
 
+    batt_init = 0
+    if 'batt_soc_init_mwh' in input_params.keys():
+        batt_init = input_params['batt_soc_init_mwh'] * 1e3
+    m.fs.battery.initial_state_of_charge.fix(batt_init)
+    m.fs.battery.initial_energy_throughput.fix(batt_init)
     m.fs.battery.elec_in[0].fix()
     m.fs.battery.elec_out[0].fix(value(m.fs.battery.elec_in[0]))
     m.fs.battery.initialize(outlvl=outlvl)
     m.fs.battery.elec_in[0].unfix()
     m.fs.battery.elec_out[0].unfix()
+    m.fs.battery.initial_state_of_charge.unfix()
+    m.fs.battery.initial_energy_throughput.unfix()
     if verbose:
         m.fs.battery.report(dof=True)
 
@@ -119,6 +126,9 @@ def initialize_fs(m, tank_holdup_init=0, verbose=False):
 
     propagate_state(m.fs.pem_to_tank)
 
+    tank_holdup_init = 0
+    if 'tank_holdup_init_mols' in input_params.keys():
+        tank_holdup_init = input_params['tank_holdup_init_mols']
     m.fs.h2_tank.outlet_to_turbine.flow_mol[0].fix(value(m.fs.h2_tank.inlet.flow_mol[0]))
     m.fs.h2_tank.outlet_to_pipeline.flow_mol[0].fix(0)
     m.fs.h2_tank.tank_holdup_previous.fix(tank_holdup_init)
@@ -143,21 +153,26 @@ def wind_battery_hydrogen_model(wind_resource_config, input_params, verbose):
     """
     m = create_model(input_params['wind_mw'], input_params['pem_bar'], input_params['batt_mw'], "simple", input_params['tank_size'], None,
                      wind_resource_config)
-    m.fs.h2_turbine_elec = pyo.Expression(expr=m.fs.h2_tank.outlet_to_turbine.flow_mol[0] * 3600 / h2_mols_per_kg * input_params['turb_conv'])
 
-    m.fs.battery.initial_state_of_charge.fix(0)
-    m.fs.battery.initial_energy_throughput.fix(0)
+    m.fs.h2_turbine_elec = pyo.Var(domain=pyo.NonNegativeReals, units=pyo.units.kW)
+    m.fs.h2_turbine_elec_calc = pyo.Constraint(expr=m.fs.h2_turbine_elec == m.fs.h2_tank.outlet_to_turbine.flow_mol[0] * 3600 / h2_mols_per_kg * input_params['turb_conv'])
 
-    initialize_fs(m, input_params['tank_holdup_init'], verbose=verbose)
-
-    m.fs.battery.initial_state_of_charge.unfix()
-    m.fs.battery.initial_energy_throughput.unfix()
+    initialize_fs(m, input_params, verbose=verbose)
 
     # unfix for design optimization
-    m.fs.battery.nameplate_power.unfix()
-    m.fs.windpower.system_capacity.unfix()
+    if input_params['design_opt']:
+        m.fs.battery.nameplate_power.unfix()
+        m.fs.battery.nameplate_energy.unfix()
+        m.fs.windpower.system_capacity.unfix()
+    else:
+        m.fs.windpower.system_capacity.fix(input_params['wind_mw'] * 1e3)
+        m.fs.battery.nameplate_power.fix(input_params['batt_mw'] * 1e3)
+        m.fs.battery.nameplate_energy.fix(input_params['batt_mwh'] * 1e3)
 
     batt = m.fs.battery
+
+    batt.degradation_rate.set_value(0)
+
     batt.energy_down_ramp = pyo.Constraint(
         expr=batt.initial_state_of_charge - batt.state_of_charge[0] <= battery_ramp_rate)
     batt.energy_up_ramp = pyo.Constraint(
