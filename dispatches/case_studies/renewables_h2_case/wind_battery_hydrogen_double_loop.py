@@ -56,6 +56,8 @@ def transform_design_model_to_operation_model(
         if t == 0:
             b.fs.battery.initial_state_of_charge.fix()
             b.fs.h2_tank.tank_holdup_previous.fix()
+        
+        b.fs.h2_tank.outlet_to_pipeline.flow_mol.fix(0)
 
         # deactivate periodic boundary condition
         if t == len(blks) - 1:
@@ -144,7 +146,7 @@ class MultiPeriodWindBatteryHydrogen:
         blk.HOUR = pyo.Set(initialize=range(horizon))
         blk.P_T = pyo.Expression(blk.HOUR)
         blk.tot_cost = pyo.Expression(blk.HOUR)
-        blk.wind_waste_penalty = pyo.Param(default=1e6, mutable=True)
+        blk.wind_waste_penalty = pyo.Param(default=100, mutable=True)
         blk.wind_waste = pyo.Expression(blk.HOUR)
         # blk.battery_priority_penalty = pyo.Param(default=0, mutable=True)
         # blk.battery_priority = pyo.Expression(blk.HOUR)
