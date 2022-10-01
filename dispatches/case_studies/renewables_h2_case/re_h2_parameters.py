@@ -65,7 +65,7 @@ re_h2_parameters = {
     "pem_mw": fixed_pem_mw,
     "pem_bar": pem_bar,
     "pem_temp": pem_temp,
-    "tank_size": fixed_tank_size,
+    "tank_size": fixed_tank_kg,
     "turb_mw": turb_p_mw,
     "turb_conv": turb_conv_rate,
     "tank_holdup_init": 0,

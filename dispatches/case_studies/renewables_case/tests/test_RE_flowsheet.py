@@ -111,7 +111,7 @@ def test_create_model(input_params):
         pem_bar=pem_bar,
         batt_mw=fixed_batt_mw,
         tank_type=tank_type,
-        tank_length_m=fixed_tank_size,
+        tank_length_m=fixed_tank_kg,
         turb_inlet_bar=pem_bar,
         wind_resource_config=input_params['wind_resource'][0]['wind_resource_config']
     )
