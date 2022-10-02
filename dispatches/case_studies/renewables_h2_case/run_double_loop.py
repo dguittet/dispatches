@@ -2,6 +2,7 @@ import copy
 from pathlib import Path
 import os
 import json
+from functools import partial
 import numpy as np
 import pandas as pd
 import pyomo.environ as pyo
@@ -35,7 +36,7 @@ start_date = '2020-01-01 00:00:00'
 df = pd.read_csv(re_h2_dir / "data" / "Wind_Thermal_Gen.csv", index_col="Datetime", parse_dates=True)
 wind_cfs, wind_resource, loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
 
-dispatch_strategy = "discharge_tank"        # "discharge_tank", "tank_target"
+dispatch_strategy = "discharge_batt"        # "discharge_tank", "tank_target", "discharge_batt", "min_op_cost"
 design = "batth2"
 horizon = 1
 
@@ -172,7 +173,7 @@ def soc_target(tracker, dispatch, profiles, target_profiles, verbose=False):
     print(batt_target, tank_target, total_missed_target)
 
 
-def heuristic_follow_dispatch(tracker, dispatch, profiles, target_profiles, verbose=False):
+def heuristic_follow_dispatch(discharge_first, dispatch, profiles, target_profiles, verbose=False):
     wind_gen_max = [pyo.value(b.fs.windpower.system_capacity * b.fs.windpower.capacity_factor[0]) for b in active_blks]
     wind_diff = wind_gen_max - dispatch * 1e3
     excess_wind = np.clip(wind_diff, 0, None)
@@ -212,16 +213,29 @@ def heuristic_follow_dispatch(tracker, dispatch, profiles, target_profiles, verb
             wind_energy -= excess_wind[i]
 
         elif storage_gen[i] > 0:
-            turb_out = min(tank_energy_discharge_max, storage_gen[i])
-            tank_energy_discharge_max -= turb_out
-            if tank_energy_discharge_max < 1:
-                turb_out = max(turb_out - 1, 0)
-            storage_gen[i] -= turb_out
+            turb_out = min(min(tank_energy_discharge_max, turb_energy_max), storage_gen[i])
             batt_out = min(min(batt_soc, batt_energy_max), storage_gen[i])
-            if batt_out / 0.95 > batt_soc:
-                batt_out = batt_soc * 0.95
-            batt_soc -= batt_out / 0.95
-            storage_gen[i] -= batt_out
+
+            if discharge_first == "tank":
+                tank_energy_discharge_max -= turb_out
+                if tank_energy_discharge_max < 1:
+                    turb_out = max(turb_out - 1, 0)
+                storage_gen[i] -= turb_out
+                batt_out = min(batt_out, storage_gen[i])
+                if batt_out / 0.95 > batt_soc:
+                    batt_out = batt_soc * 0.95
+                batt_soc -= batt_out / 0.95
+                storage_gen[i] -= batt_out
+            else:
+                if batt_out / 0.95 > batt_soc:
+                    batt_out = batt_soc * 0.95
+                batt_soc -= batt_out / 0.95
+                storage_gen[i] -= batt_out
+                turb_out = min(turb_out, storage_gen[i])
+                tank_energy_discharge_max -= turb_out
+                if tank_energy_discharge_max < 1:
+                    turb_out = max(turb_out - 1, 0)
+                storage_gen[i] -= turb_out
             energy_to_battery_ts = 0
             energy_to_pem_ts = 0
             if abs(storage_gen[i] > 1e-3):
@@ -252,7 +266,7 @@ def heuristic_follow_dispatch(tracker, dispatch, profiles, target_profiles, verb
         m.fs.battery.elec_in[0].unfix()
         propagate_state(m.fs.splitter_to_battery)
         m.fs.battery.elec_in[0].fix()
-        if batt_soc:
+        if abs(batt_soc) > 1e-5:
             m.fs.battery.elec_out[0].fix(batt_out)
         else:
             m.fs.battery.elec_out[0].unfix()
@@ -281,8 +295,10 @@ def heuristic_follow_dispatch(tracker, dispatch, profiles, target_profiles, verb
 ##########################
 
 if dispatch_strategy == "discharge_tank":
-    dispatch_strategy_fx = heuristic_follow_dispatch
-if "target" in dispatch_strategy:
+    dispatch_strategy_fx = partial(heuristic_follow_dispatch, discharge_first='tank')
+elif dispatch_strategy == 'discharge_batt':
+    dispatch_strategy_fx = partial(heuristic_follow_dispatch, discharge_first='batt')
+elif "target" in dispatch_strategy:
     dispatch_strategy_fx = soc_target
     blk.del_component("tot_cost")
     blk.tot_cost = pyo.Expression(blk.HOUR)
@@ -306,9 +322,12 @@ if "target" in dispatch_strategy:
     tracker_object._add_tracking_objective()
 
     total_missed_target = 0
+elif dispatch_strategy == "min_op_cost":
+    dispatch_strategy_fx = lambda dispatch, profiles, target_profiles, verbose=None: None
 
 for n, datetime in enumerate(df.index):
-    # if n < 4861:
+    # if n < 4912:
+        # profiles = {'realized_soc': ([6530.640934472234]), 'realized_energy_throughput': ([1734298.9265561257]), 'realized_h2_tank_holdup': ([50.0])}
         # tracker_object.update_model(**profiles)
         # continue
     dispatch = mp_model._design_params['load'][n : n + horizon]
@@ -322,13 +341,13 @@ for n, datetime in enumerate(df.index):
         "tank_holdup_mol": res_df['Tank Holdup [kg]'].values[n : n + horizon] * h2_mols_per_kg
     }
 
-    dispatch_strategy_fx(tracker_object, dispatch, profiles, target_profiles)
+    dispatch_strategy_fx(dispatch=dispatch, profiles=profiles, target_profiles=target_profiles)
 
     try:
         profiles = tracker_object.track_market_dispatch(dispatch, date, hour)
     except Exception as e:
         print(n, profiles)
-        dispatch_strategy_fx(tracker_object, dispatch, profiles, target_profiles, verbose=True)
+        dispatch_strategy_fx(dispatch=dispatch, profiles=profiles, target_profiles=target_profiles, verbose=True)
         profiles = tracker_object.track_market_dispatch(dispatch, date, hour)
     # tracker_object.record_results(date=date, hour=hour)
     try:

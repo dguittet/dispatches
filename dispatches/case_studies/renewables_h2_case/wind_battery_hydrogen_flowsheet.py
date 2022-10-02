@@ -154,8 +154,7 @@ def wind_battery_hydrogen_model(wind_resource_config, input_params, verbose):
     m = create_model(input_params['wind_mw'], input_params['pem_bar'], input_params['batt_mw'], "simple", input_params['tank_size'], None,
                      wind_resource_config)
 
-    m.fs.h2_turbine_elec = pyo.Var(domain=pyo.NonNegativeReals, units=pyo.units.kW)
-    m.fs.h2_turbine_elec_calc = pyo.Constraint(expr=m.fs.h2_turbine_elec == m.fs.h2_tank.outlet_to_turbine.flow_mol[0] * 3600 / h2_mols_per_kg * input_params['turb_conv'])
+    m.fs.h2_turbine_elec = pyo.Expression(expr=m.fs.h2_tank.outlet_to_turbine.flow_mol[0] * 3600 / h2_mols_per_kg * input_params['turb_conv'])
 
     initialize_fs(m, input_params, verbose=verbose)
 
