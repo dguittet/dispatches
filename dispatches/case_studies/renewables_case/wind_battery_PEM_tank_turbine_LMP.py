@@ -222,6 +222,7 @@ def wind_battery_pem_tank_turb_model(wind_resource_config, input_params, verbose
 
     m.fs.battery.initial_state_of_charge.fix(0)
     m.fs.battery.initial_energy_throughput.fix(0)
+    m.fs.h2_tank.tank_holdup_previous.fix(0)
 
     if input_params['tank_type'] == "detailed":
         m.fs.h2_tank.previous_state[0].temperature.fix(input_params['pem_temp'])
@@ -234,6 +235,7 @@ def wind_battery_pem_tank_turb_model(wind_resource_config, input_params, verbose
         m.fs.h2_tank.previous_state[0].pressure.unfix()
     m.fs.battery.initial_state_of_charge.unfix()
     m.fs.battery.initial_energy_throughput.unfix()
+    m.fs.h2_tank.tank_holdup_previous.unfix()
 
     batt = m.fs.battery
     batt.energy_down_ramp = pyo.Constraint(
