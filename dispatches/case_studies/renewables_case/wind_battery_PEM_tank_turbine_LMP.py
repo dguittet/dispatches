@@ -390,7 +390,7 @@ def wind_battery_pem_tank_turb_optimize(n_time_points, input_params, verbose=Fal
     # capital costs
     m.wind_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['wind_mw'] * 1e3, units=pyo.units.kW, bounds=(0, input_params['wind_mw_ub'] * 1e3))
     m.battery_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['batt_mw'] * 1e3, units=pyo.units.kW)
-    m.battery_system_energy = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['batt_mw'] * 1e3 (input_params['batt_mwh'] if 'batt_mwh' in input_params.keys()
+    m.battery_system_energy = pyo.Var(domain=pyo.NonNegativeReals, initialize=(input_params['batt_mwh'] if 'batt_mwh' in input_params.keys()
                                                                                 else (input_params['batt_mw'] * input_params['batt_hr'])) * 1e3, units=pyo.units.kWh)
     m.pem_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['pem_mw'] * 1e3, units=pyo.units.kW)
     m.h2_tank_size = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['tank_size'], units=pyo.units.kg)
@@ -421,9 +421,9 @@ def wind_battery_pem_tank_turb_optimize(n_time_points, input_params, verbose=Fal
                 blk.fs.h2_tank.tank_length.unfix()
             blk.fs.battery.nameplate_power.unfix()
     else:
-        m.pem_system_capacity.fix(input_params['pem_mw'])
+        m.pem_system_capacity.fix(input_params['pem_mw'] * 1e3)
         m.h2_tank_size.fix(input_params['tank_size'])
-        m.turb_system_capacity.fix(input_params['turb_mw'])
+        m.turb_system_capacity.fix(input_params['turb_mw'] * 1e3)
 
     m.wind_max_p = pyo.Constraint(mp_model.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.windpower.system_capacity <= m.wind_system_capacity)
     m.battery_max_p = pyo.Constraint(mp_model.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.battery.nameplate_power <= m.battery_system_capacity)
@@ -506,7 +506,7 @@ def wind_battery_pem_tank_turb_optimize(n_time_points, input_params, verbose=Fal
     batt_out = [pyo.value(blks[i].fs.battery.elec_out[0]) for i in range(n_time_points)]
     batt_in = [pyo.value(blks[i].fs.battery.elec_in[0]) for i in range(n_time_points)]
     
-    turb_kgH2 = [pyo.value(blks[i].fs.h2_turbine.compressor.inlet.flow_mol[0]) * 3600 / h2_mols_per_kg for i in range(n_time_points)]
+    turb_kgH2 = [pyo.value(blks[i].fs.h2_turbine.compressor.inlet.flow_mol[0] * blks[i].fs.h2_turbine.compressor.inlet.mole_frac_comp[0, "hydrogen"]) * 3600 / h2_mols_per_kg for i in range(n_time_points)]
     turbine_elec = [pyo.value(blks[i].fs.h2_turbine.electricity[0]) for i in range(n_time_points)]
     
     elec_income = [pyo.value(blks[i].profit) for i in range(n_time_points)]
