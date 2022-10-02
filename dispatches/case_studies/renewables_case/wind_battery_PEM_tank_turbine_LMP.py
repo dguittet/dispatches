@@ -12,6 +12,7 @@
 # "https://github.com/gmlc-dispatches/dispatches".
 #
 #################################################################################
+import os
 from functools import partial
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,6 +22,10 @@ from pyomo.util.infeasible import log_infeasible_constraints, log_infeasible_bou
 from idaes.apps.grid_integration.multiperiod.multiperiod import MultiPeriodModel
 from dispatches.case_studies.renewables_case.RE_flowsheet import create_model, propagate_state, value, h2_mols_per_kg, PA, battery_ramp_rate
 from dispatches.case_studies.renewables_case.load_parameters import default_input_params, h2_turb_min_flow, air_h2_ratio
+from pyomo.common.tempfiles import TempfileManager
+
+if os.environ.get("SLURMD_NODENAME"):
+    TempfileManager.tempdir = os.environ.get("LOCAL_SCRATCH")
 
 
 def wind_battery_pem_tank_turb_variable_pairs(m1, m2, tank_type):
@@ -604,5 +609,8 @@ def wind_battery_pem_tank_turb_optimize(n_time_points, input_params, verbose=Fal
 
 
 if __name__ == "__main__":
-    des_res = wind_battery_pem_tank_turb_optimize(n_time_points=14 * 24, input_params=default_input_params, verbose=True, plot=True)
+    input_params = default_input_params.copy()
+    input_params.pop("DA_LMPs")
+    input_params.pop("wind_resource")
+    print(input_params)
     print(des_res)
