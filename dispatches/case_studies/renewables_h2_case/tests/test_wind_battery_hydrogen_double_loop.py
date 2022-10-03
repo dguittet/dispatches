@@ -99,7 +99,7 @@ def test_record_results(mp_model):
 
 
 def test_tracking(mp_model):
-    solver = pyo.SolverFactory("xpress_direct")
+    solver = pyo.SolverFactory("cbc")
     tracker_object = Tracker(
         tracking_model_object=mp_model,
         tracking_horizon=24,
