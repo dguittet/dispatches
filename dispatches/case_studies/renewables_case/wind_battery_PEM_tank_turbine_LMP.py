@@ -227,20 +227,21 @@ def wind_battery_pem_tank_turb_model(wind_resource_config, input_params, verbose
 
     m.fs.battery.initial_state_of_charge.fix(0)
     m.fs.battery.initial_energy_throughput.fix(0)
-    m.fs.h2_tank.tank_holdup_previous.fix(0)
-
-    if input_params['tank_type'] == "detailed":
+    if input_params['tank_type'] == "simple":
+        m.fs.h2_tank.tank_holdup_previous.fix(0)
+    elif input_params['tank_type'] == "detailed":
         m.fs.h2_tank.previous_state[0].temperature.fix(input_params['pem_temp'])
         m.fs.h2_tank.previous_state[0].pressure.fix(input_params['pem_bar'] * 1e5)
 
     initialize_fs(m, input_params['tank_type'], verbose=verbose)
-
-    if input_params['tank_type'] == "detailed":
+    
+    if input_params['tank_type'] == "simple":
+        m.fs.h2_tank.tank_holdup_previous.unfix()
+    elif input_params['tank_type'] == "detailed":
         m.fs.h2_tank.previous_state[0].temperature.unfix()
         m.fs.h2_tank.previous_state[0].pressure.unfix()
     m.fs.battery.initial_state_of_charge.unfix()
     m.fs.battery.initial_energy_throughput.unfix()
-    m.fs.h2_tank.tank_holdup_previous.unfix()
 
     batt = m.fs.battery
     batt.energy_down_ramp = pyo.Constraint(
@@ -613,4 +614,5 @@ if __name__ == "__main__":
     input_params.pop("DA_LMPs")
     input_params.pop("wind_resource")
     print(input_params)
+    des_res = wind_battery_pem_tank_turb_optimize(n_time_points=14 * 24, input_params=default_input_params, verbose=True, plot=True)
     print(des_res)

@@ -62,6 +62,7 @@ re_h2_parameters = {
     "wind_mw": wind_gen_pmax,
     "wind_mw_ub": wind_mw_ub,
     "batt_mw": fixed_batt_mw,
+    "batt_hr": 4,
     "pem_mw": fixed_pem_mw,
     "pem_bar": pem_bar,
     "pem_temp": pem_temp,

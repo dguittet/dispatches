@@ -283,7 +283,9 @@ def add_h2_turbine(m, inlet_pres_bar):
         expr=m.fs.mixer.air_feed.flow_mol[0] == air_h2_ratio * (
                 m.fs.mixer.purchased_hydrogen_feed.flow_mol[0] + m.fs.mixer.hydrogen_feed.flow_mol[0]))
 
-    m.fs.mixer.purchased_hydrogen_feed.flow_mol[0].setlb(h2_turb_min_flow / 2)
+    m.fs.mixer.purchased_hydrogen_feed.flow_mol[0].setlb(h2_turb_min_flow * 0.9)
+    m.fs.mixer.purchased_hydrogen_feed.flow_mol[0].setub(h2_turb_min_flow * 1.1)
+
 
     m.fs.translator_to_mixer = Arc(
         source=m.fs.translator.outlet,
@@ -305,7 +307,7 @@ def add_h2_turbine(m, inlet_pres_bar):
     # Specify the Stoichiometric Conversion Rate of hydrogen
     # in the equation shown below
     # H2(g) + O2(g) --> H2O(g) + energy
-    m.fs.h2_turbine.stoic_reactor.conversion.fix(0.99)
+    m.fs.h2_turbine.stoic_reactor.conversion.fix(0.6)
     m.fs.h2_turbine.stoic_reactor.control_volume.properties_in[0.0].flow_mol_phase['Vap'].setub(1e7)
     m.fs.h2_turbine.stoic_reactor.control_volume.properties_in[0.0].flow_mol.setub(1e7)
     m.fs.h2_turbine.stoic_reactor.control_volume.properties_out[0.0].flow_mol.setub(1e7)
@@ -314,7 +316,7 @@ def add_h2_turbine(m, inlet_pres_bar):
 
     m.fs.h2_turbine.turbine.deltaP.fix(-compressor_dp * 1e5)
     m.fs.h2_turbine.turbine.ratioP.unfix()
-    m.fs.h2_turbine.turbine.efficiency_isentropic.fix(0.99)
+    m.fs.h2_turbine.turbine.efficiency_isentropic.fix(0.6)
     m.fs.h2_turbine.turbine.control_volume.properties_in[0.0].flow_mol_phase['Vap'].setub(1e7)
     m.fs.h2_turbine.turbine.control_volume.properties_in[0.0].flow_mol.setub(1e7)
     m.fs.h2_turbine.turbine.control_volume.properties_out[0.0].flow_mol.setub(1e7)
