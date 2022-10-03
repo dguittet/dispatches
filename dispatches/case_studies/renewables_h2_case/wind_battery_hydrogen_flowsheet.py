@@ -371,7 +371,12 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     calculate_operating_costs(mp_model, input_params)
     add_load_following_obj(mp_model, input_params)
 
-    opt = pyo.SolverFactory('xpress_direct')
+    opt = None
+    for solver in ('xpress_direct', 'gurobi', 'cbc', 'ipopt'):
+        if pyo.SolverFactory(solver).available(exception_flag=False):
+            opt = pyo.SolverFactory(solver)
+    if not opt:
+        raise RuntimeWarning("No available solvers")
 
     # opt.options['max_iter'] = 10000
 
