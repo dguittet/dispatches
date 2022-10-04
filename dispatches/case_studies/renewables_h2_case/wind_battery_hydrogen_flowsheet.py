@@ -302,7 +302,7 @@ def add_load_following_obj(mp_model, input_params):
     m.annual_revenue = pyo.Expression(expr=(sum([blk.profit + blk.hydrogen_revenue for blk in blks])) * 52.143 / n_weeks)
 
     m.NPV = pyo.Expression(expr=-m.total_cap_cost + PA * m.annual_revenue)
-    m.obj = pyo.Objective(expr=-m.NPV)
+    m.obj = pyo.Objective(expr=-m.NPV * 1e-8)
 
 
 def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, plot=False):
@@ -375,17 +375,18 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     for solver in ('xpress_direct', 'gurobi', 'cbc', 'ipopt'):
         if pyo.SolverFactory(solver).available(exception_flag=False):
             opt = pyo.SolverFactory(solver)
+            break
     if not opt:
         raise RuntimeWarning("No available solvers")
 
-    # opt.options['max_iter'] = 10000
+    #opt.options['max_iter'] = 10000
 
     if verbose:
         solve_log = idaeslog.getInitLogger("infeasibility", idaeslog.INFO, tag="properties")
         log_infeasible_constraints(m, logger=solve_log, tol=1e-4, log_expression=True, log_variables=True)
         log_infeasible_bounds(m, logger=solve_log, tol=1e-4)
 
-    opt.solve(m, tee=False)
+    opt.solve(m, tee=True)
 
     if verbose:
         solve_log = idaeslog.getInitLogger("infeasibility", idaeslog.INFO, tag="properties")

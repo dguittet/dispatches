@@ -40,7 +40,6 @@ re_h2_dir = Path(this_file_dir())
 #
 ##################
 
-params = copy.copy(re_h2_parameters)
 wind_gen = "317_WIND"
 wind_gen_pmax = 799.1
 gas_gen = "317_CT"
@@ -53,16 +52,16 @@ wind_cfs, wind_resource, loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_g
 dispatch_strategy = "discharge_batt"        # "discharge_tank", "tank_target", "discharge_batt", "min_op_cost"
 design = "batth2"
 horizon = 1
+results_dir = re_h2_dir / f"double_loop_{gas_gen}_{design}"
 
 if design == "batth2":
-    hybrid_wind_mw = 953.842
-    hybrid_batt_mw = 94.33
-    hybrid_batt_mwh = 839.888
-    hybrid_pem_mw = 3.773
-    hybrid_tank_tonH2 = 282.705
-    hybrid_turb_mw = 45.985
-    hybrid_turb_conv = 10
-    h2_price_per_kg = 2.0
+
+    with open(results_dir / "input_parameters.json", "r") as f:
+        params = json.load(f)
+
+    hybrid_wind_mw = params["wind_mw"]
+    hybrid_batt_mw = params['batt_mw']
+    hybrid_turb_mw = params['turb_mw']
 elif design == "batt":
     hybrid_wind_mw = 932.301
     hybrid_batt_mw = 106.314
@@ -76,7 +75,6 @@ elif design == "batt":
 hybrid_pmax = wind_gen_pmax + hybrid_batt_mw + hybrid_turb_mw
 n_time_points = len(wind_cfs)
 
-results_dir = re_h2_dir / f"double_loop_{gas_gen}_{design}_{round(hybrid_pmax)}"
 
 
 #########################
@@ -85,20 +83,13 @@ results_dir = re_h2_dir / f"double_loop_{gas_gen}_{design}_{round(hybrid_pmax)}"
 #
 #########################
 
-params["wind_mw"] = hybrid_wind_mw
-params["batt_mw"] = hybrid_batt_mw
-params["batt_mwh"] = hybrid_batt_mwh
-params["pem_mw"] = hybrid_pem_mw
-params["tank_size"] = hybrid_tank_tonH2 / kg_to_tons
-params["turb_mw"] = hybrid_turb_mw
-params["turb_conv"] = hybrid_turb_conv
+params["tank_size"] = params['tank_tonH2'] / kg_to_tons
+params['pem_bar'] = re_h2_parameters['pem_bar']
 
 params["wind_resource"] = wind_resource
 params["load"] = loads_mw
 params["shortfall_price"] = shortfall
-params["h2_price_per_kg"] = h2_price_per_kg
-params["design_opt"] = False
-params["build_add_wind"] = False
+params["design_opt"] = params["build_add_wind"] = True
 
 if not results_dir.exists():
     os.mkdir(results_dir)
@@ -113,7 +104,8 @@ else:
     with open(results_dir / "design_sizes.json", 'w') as f:
         json.dump(des_res, f)
 
-
+params.update(des_res)
+params["tank_size"] = params['tank_tonH2'] / kg_to_tons
 
 ##########################
 #
