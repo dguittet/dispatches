@@ -282,6 +282,8 @@ def add_load_following_obj(mp_model, input_params):
     blks = mp_model.get_active_process_blocks()
     n_weeks = len(blks) / (7 * 24)
 
+    wind_mw = [input_params['wind_mw'] * i[1]['wind_resource_config']['capacity_factor'][0] for i in input_params['wind_resource'].items()]
+
     for (i, blk) in enumerate(blks):
         blk_battery = blk.fs.battery
         blk_tank = blk.fs.h2_tank
@@ -298,6 +300,19 @@ def add_load_following_obj(mp_model, input_params):
                                     )
         blk.hydrogen_revenue = pyo.Expression(expr=m.h2_price_per_kg / h2_mols_per_kg * blk_tank.outlet_to_pipeline.flow_mol[0] * 3600)
 
+        if 'modop' in input_params.keys() and input_params['modop']:
+            if wind_mw[i] > input_params['load'][i]:
+                blk.no_batt_discharge = pyo.Constraint(expr=blk_battery.elec_out[0] == 0)
+                blk.no_tank_discharge = pyo.Constraint(expr=blk.fs.h2_turbine_elec == 0)
+            else:
+                blk.no_batt_charge = pyo.Constraint(expr=blk_battery.elec_in[0] == 0)
+                blk.no_tank_charge = pyo.Constraint(expr=blk.fs.pem.electricity[0] == 0)
+
+        if 'min_batt_soc' in input_params.keys():
+            blk.min_batt_soc = pyo.Constraint(expr=blk_battery.state_of_charge[0] >= input_params['min_batt_soc'] * 1e3)
+
+        if 'min_tank_soc' in input_params.keys():
+            blk.min_tank_soc = pyo.Constraint(expr=blk_tank.tank_holdup[0] / h2_mols_per_kg * input_params['turb_conv'] >= input_params['min_tank_soc'] * 1e3)
 
     m.annual_revenue = pyo.Expression(expr=(sum([blk.profit + blk.hydrogen_revenue for blk in blks])) * 52.143 / n_weeks)
 
