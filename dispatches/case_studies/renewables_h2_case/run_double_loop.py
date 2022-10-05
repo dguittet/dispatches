@@ -46,16 +46,17 @@ start_date = '2020-01-01 00:00:00'
 df = pd.read_csv(re_h2_dir / "data" / "Wind_Thermal_Gen.csv", index_col="Datetime", parse_dates=True)
 wind_cfs, wind_resource, loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
 
-dispatch_strategy = "discharge_batt"        # "tank_target", "discharge_tank", "discharge_batt", "min_op_cost", "dtree"
+dispatch_strategy = "tank_target"        # "tank_target", "discharge_tank", "discharge_batt", "min_op_cost", "dtree"
 design = "batth2"
-horizon = 1
+op_setting = "minsoc"                # "freeop", "modop", "minsoc"
+
+horizon = 24 if dispatch_strategy == "min_op_cost" else 1
+    
 results_dir = re_h2_dir / f"double_loop_{gas_gen}_{design}"
 
 if design == "batth2":
-
     with open(results_dir / "input_parameters.json", "r") as f:
         params = json.load(f)
-
     hybrid_wind_mw = params["wind_mw"]
     hybrid_batt_mw = params['batt_mw']
     hybrid_turb_mw = params['turb_mw']
@@ -79,8 +80,6 @@ n_time_points = len(wind_cfs)
 # Run Conceptual Design
 #
 #########################
-
-op_setting = "minsoc"
 
 params["tank_size"] = params['tank_tonH2'] / kg_to_tons
 params['pem_bar'] = re_h2_parameters['pem_bar']
@@ -193,7 +192,6 @@ elif "target" in dispatch_strategy:
     tracker_object.model.del_component('obj')
     tracker_object._add_tracking_objective()
 
-    total_missed_target = 0
 elif dispatch_strategy == "min_op_cost":
     dispatch_strategy_fx = lambda tracker, params, dispatch, profiles, target_profiles, verbose=None: None
 elif dispatch_strategy == 'dtree':

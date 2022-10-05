@@ -51,8 +51,7 @@ def soc_target(tracker, params, dispatch, profiles, target_profiles, verbose=Fal
     # blk.batt_target[0].set_value(batt_target)
     blk.tank_target[0].set_value(tank_target)
 
-    global total_missed_target
-    total_missed_target += pyo.value(blk.tank_target_under[t] + blk.tank_target_over[t])
+    total_missed_target = pyo.value(blk.tank_target_under[0] + blk.tank_target_over[0])
     # total_missed_target += pyo.value(blk.batt_target_under[t] + blk.batt_target_over[t])
     print(batt_target, tank_target, total_missed_target)
 
@@ -254,11 +253,8 @@ def dtree(tracker, params, dispatch, profiles, target_profiles, verbose=False):
         energy_to_pem_ts = max(0, min(y[1], 1)) * params['pem_mw']
         batt_out = max(0, min(y[2], 1)) * params['batt_mw']
         turb_out = max(0, min(y[3], 1)) * params['turb_mw']
-        if wind_excess[i] > 0:
-            wind_energy = dispatch[i] + energy_to_battery_ts + energy_to_pem_ts
-        else:
-            wind_energy = wind_gen_max[i] - batt_out - turb_out
 
+        wind_energy = dispatch[i] + energy_to_battery_ts + energy_to_pem_ts - batt_out - turb_out
         wind_energy = max(0, min(wind_energy, wind_gen_max[i]))
 
         init_with_fixed_controls(process_blk, wind_energy, energy_to_battery_ts, energy_to_pem_ts, batt_soc, batt_out, turb_out, turb_energy_max, params['turb_conv'], verbose)
