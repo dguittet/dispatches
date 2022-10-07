@@ -18,9 +18,9 @@ import json
 import pandas as pd
 import pyomo.environ as pyo
 from pyomo.common.fileutils import this_file_dir
-
 from pyomo.util.infeasible import log_infeasible_constraints, log_infeasible_bounds, log_close_to_bounds
 
+import idaes.logger as idaeslog
 from idaes.apps.grid_integration.model_data import ThermalGeneratorModelData
 from idaes.apps.grid_integration import Tracker
 from dispatches.case_studies.renewables_h2_case.wind_battery_hydrogen_flowsheet import wind_battery_hydrogen_optimize
@@ -46,9 +46,9 @@ start_date = '2020-01-01 00:00:00'
 df = pd.read_csv(re_h2_dir / "data" / "Wind_Thermal_Gen.csv", index_col="Datetime", parse_dates=True)
 wind_cfs, wind_resource, loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
 
-dispatch_strategy = "tank_target"        # "tank_target", "discharge_tank", "discharge_batt", "min_op_cost", "dtree"
+dispatch_strategy = "dtree"        # "tank_target", "discharge_tank", "discharge_batt", "min_op_cost", "dtree"
 design = "batth2"
-op_setting = "minsoc"                # "freeop", "modop", "minsoc"
+op_setting = "minsocfree"                # "freeop", "modop", "minsoc", "minsocfree"
 
 horizon = 24 if dispatch_strategy == "min_op_cost" else 1
     
@@ -88,6 +88,9 @@ params["wind_resource"] = wind_resource
 params["load"] = loads_mw
 params["shortfall_price"] = shortfall
 params["design_opt"] = params["build_add_wind"] = True
+if op_setting == "minsocfree":
+    params['min_tank_soc'] = hybrid_turb_mw
+    params['min_batt_soc'] = gas_gen_pmax - hybrid_turb_mw
 if op_setting == "minsoc":
     params['min_tank_soc'] = hybrid_turb_mw
     params['min_batt_soc'] = gas_gen_pmax - hybrid_turb_mw
@@ -208,8 +211,8 @@ elif dispatch_strategy == 'dtree':
 ##########################
 
 for n, datetime in enumerate(df.index):
-    # if n < 4912:
-        # profiles = {'realized_soc': ([6530.640934472234]), 'realized_energy_throughput': ([1734298.9265561257]), 'realized_h2_tank_holdup': ([50.0])}
+    # if n < 5848:
+        # profiles = {'realized_soc': ([0.0]), 'realized_energy_throughput': ([106413552.62]), 'realized_h2_tank_holdup': ([0.004859048407524824])}
         # tracker_object.update_model(**profiles)
         # continue
     dispatch = mp_model._design_params['load'][n : n + horizon]
@@ -230,7 +233,10 @@ for n, datetime in enumerate(df.index):
         profiles = tracker_object.track_market_dispatch(dispatch, date, hour)
     except Exception as e:
         print(n, profiles)
-        dispatch_strategy_fx(tracker=tracker_object, dispatch=dispatch, profiles=profiles, target_profiles=target_profiles, verbose=True)
+        solve_log = idaeslog.getInitLogger("infeasibility", idaeslog.INFO, tag="properties")
+        log_infeasible_constraints(blk, logger=solve_log, tol=1e-4, log_expression=True, log_variables=True)
+        log_infeasible_bounds(blk, logger=solve_log, tol=1e-4)
+        dispatch_strategy_fx(tracker=tracker_object, params=params, dispatch=dispatch, profiles=profiles, target_profiles=target_profiles, verbose=True)
         profiles = tracker_object.track_market_dispatch(dispatch, date, hour)
     # tracker_object.record_results(date=date, hour=hour)
     try:

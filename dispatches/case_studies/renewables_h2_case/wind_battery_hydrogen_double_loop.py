@@ -41,6 +41,8 @@ def create_multiperiod_wind_battery_hydrogen_model(n_time_points, wind_capacity_
                                                 [wind_capacity_factors[t]]}} for t in range(len(wind_capacity_factors))}
 
      # create the multiperiod model object
+    if 'design_opt' in input_params.keys():
+        input_params['design_opt'] = False
     mp_wind_battery_hydrogen = MultiPeriodModel(
         n_time_points=n_time_points,
         process_model_func=partial(wind_battery_hydrogen_mp_block, input_params=input_params, verbose=False),
@@ -347,7 +349,7 @@ class MultiPeriodWindBatteryHydrogen:
                 round(pyo.value(process_blk.fs.h2_tank.tank_holdup[0] / h2_mols_per_kg), round_digits)
             )
             result_dict["Turbine Power Output [MW]"] = float(
-                round(pyo.value(process_blk.fs.h2_turbine_elec), round_digits)
+                round(pyo.value(process_blk.fs.h2_turbine_elec * 1e-3), round_digits)
             )
             result_dict["Total Cost [$]"] = float(round(pyo.value(blk.tot_cost[t]), round_digits))
 
