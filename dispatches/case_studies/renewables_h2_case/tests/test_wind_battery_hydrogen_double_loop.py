@@ -29,7 +29,7 @@ def mp_model():
     reserves = 10
     shortfall = 10000
     start_date = '2020-06-01 00:00:00'
-    wind_cfs, wind_resource, loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
+    wind_cfs, wind_resource, loads_mw, wind_loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
 
     params["wind_mw"] = wind_gen_pmax
     params['batt_mwh'] = params['batt_mw'] * 4

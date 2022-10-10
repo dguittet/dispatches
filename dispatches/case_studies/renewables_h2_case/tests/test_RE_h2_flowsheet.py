@@ -31,11 +31,12 @@ def input_params():
     reserves = 10
     shortfall = 10000
     start_date = '2020-06-01 00:00:00'
-    _, wind_capacity_factors, loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
+    _, wind_capacity_factors, loads_mw, wind_loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
 
     params["wind_mw"] = wind_gen_pmax
     params["wind_resource"] = wind_capacity_factors
     params["load"] = loads_mw
+    params["wind_load"] = wind_loads_mw
     params["shortfall_price"] = shortfall
     return params
 

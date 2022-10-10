@@ -117,7 +117,7 @@ reserves = params['reserves']
 shortfall = params['shortfall']
 start_date = params['start_date']
 
-_, wind_capacity_factors, loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
+_, wind_capacity_factors, loads_mw, _ = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
 params["wind_resource"] = wind_capacity_factors
 params["load"] = loads_mw.tolist()
 

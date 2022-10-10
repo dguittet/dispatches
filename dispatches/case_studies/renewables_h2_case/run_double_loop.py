@@ -44,7 +44,7 @@ reserves = 15
 shortfall = 500
 start_date = '2020-01-01 00:00:00'
 df = pd.read_csv(re_h2_dir / "data" / "Wind_Thermal_Gen.csv", index_col="Datetime", parse_dates=True)
-wind_cfs, wind_resource, loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
+wind_cfs, wind_resource, loads_mw, wind_loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
 
 dispatch_strategy = "dtree"        # "tank_target", "discharge_tank", "discharge_batt", "min_op_cost", "dtree"
 design = "batth2"

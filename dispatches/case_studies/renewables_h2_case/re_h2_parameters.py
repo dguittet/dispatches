@@ -47,7 +47,7 @@ def get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_d
                                         [wind_cfs[t]]}} for t in range(len(wind_cfs))}
 
     loads_mw = (df[f"{wind_gen} Output"] + df[f"Gas Output"]).values
-    return wind_cfs, wind_resource, loads_mw
+    return wind_cfs, wind_resource, loads_mw, df[f"{wind_gen} Output"].values
 
 wind_gen = "317_WIND"
 wind_gen_pmax = 799.1
@@ -55,7 +55,7 @@ gas_gen = "317_CT"
 reserves = 15
 shortfall = 500
 start_date = '2020-01-01 00:00:00'
-wind_cfs, wind_resource, loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
+wind_cfs, wind_resource, loads_mw, wind_loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
 
 
 re_h2_parameters = {
@@ -79,6 +79,8 @@ re_h2_parameters = {
 
     "opt_mode": "meet_load",
     "load": loads_mw,
+    'wind_load': wind_loads_mw,
+
     'shortfall_price': shortfall,
 
     "wind_cap_cost": wind_cap_cost,

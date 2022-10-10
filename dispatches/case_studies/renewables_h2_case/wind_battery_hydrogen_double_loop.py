@@ -72,7 +72,8 @@ def transform_design_model_to_operation_model(
         if t == 0:
             b.fs.battery.initial_state_of_charge.fix()
             b.fs.h2_tank.tank_holdup_previous.fix()
-        
+            b.fs.h2_tank.tank_throughput_previous.fix()
+            
         b.fs.h2_tank.outlet_to_pipeline.flow_mol.fix(0)
 
         # deactivate periodic boundary condition
@@ -175,7 +176,7 @@ class MultiPeriodWindBatteryHydrogen:
 
         return
 
-    def update_model(self, b, realized_soc, realized_energy_throughput, realized_h2_tank_holdup):
+    def update_model(self, b, realized_soc, realized_energy_throughput, realized_h2_tank_holdup, realized_h2_throughput):
         """Update variables using future wind capacity the realized state-of-charge and enrgy throughput profiles.
 
         Args:
@@ -199,6 +200,9 @@ class MultiPeriodWindBatteryHydrogen:
 
         new_init_h2_holdup = round(realized_h2_tank_holdup[-1], 2)
         active_blks[0].fs.h2_tank.tank_holdup_previous.fix(new_init_h2_holdup)
+
+        new_init_h2_throughput = round(realized_h2_throughput[-1], 2)
+        active_blks[0].fs.h2_tank.tank_throughput_previous.fix(new_init_h2_throughput)
 
         # shift the time -> update capacity_factor
         time_advance = min(len(realized_soc), 24)
@@ -275,10 +279,16 @@ class MultiPeriodWindBatteryHydrogen:
             for t in range(last_implemented_time_step + 1)
         )
 
+        realized_h2_throughput = deque(
+            pyo.value(active_blks[t].fs.battery.state_of_charge[0])
+            for t in range(last_implemented_time_step + 1)
+        )
+
         return {
             "realized_soc": realized_soc,
             "realized_energy_throughput": realized_energy_throughput,
-            "realized_h2_tank_holdup": realized_h2_tank_holdup
+            "realized_h2_tank_holdup": realized_h2_tank_holdup,
+            "realized_h2_throughput": realized_h2_throughput
         }
 
     def record_results(self, b, date=None, hour=None, **kwargs):

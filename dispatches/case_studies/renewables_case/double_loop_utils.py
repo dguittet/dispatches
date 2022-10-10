@@ -199,7 +199,7 @@ def prescient_outputs_for_gen(output_dir, source_dir, gen_name):
     df = pd.concat([summary, gen_df], axis=1)
 
     if 'WIND' in gen_name:
-        wind_forecast_df = read_rts_gmlc_wind_inputs_with_fix(source_dir, gen_name)
+        wind_forecast_df = read_rts_gmlc_wind_inputs(source_dir, gen_name)
         wind_forecast_df = wind_forecast_df[wind_forecast_df.index.isin(df.index)]
         df = pd.concat([df, wind_forecast_df], axis=1)
     return df

@@ -63,13 +63,14 @@ def init_with_fixed_controls(process_blk, wind_energy, energy_to_battery_ts, ene
     m = process_blk
     m.fs.windpower.electricity[0].fix(wind_energy)
     m.fs.windpower.initialize(outlvl=outlvl)
-
     propagate_state(m.fs.wind_to_splitter)
+    m.fs.windpower.electricity[0].unfix()
+
     m.fs.splitter.battery_elec[0].fix(energy_to_battery_ts)
     m.fs.splitter.pem_elec[0].fix(energy_to_pem_ts)
     m.fs.splitter.initialize(outlvl=outlvl)
-
     propagate_state(m.fs.splitter_to_pem)
+
     m.fs.pem.outlet_state[0].flow_mol.fix()
     m.fs.pem.outlet_state[0].mole_frac_comp.fix()
     m.fs.pem.initialize(outlvl=outlvl)
@@ -97,7 +98,7 @@ def init_with_fixed_controls(process_blk, wind_energy, energy_to_battery_ts, ene
     m.fs.h2_tank.initialize(outlvl=outlvl)
     if turb_energy_max < 1:
         m.fs.h2_tank.outlet_to_turbine.flow_mol[0].unfix()
-
+    
 
 def heuristic_follow_dispatch(tracker, params, dispatch, profiles, target_profiles, verbose=False):
     active_blks = tracker.model.fs.windBatteryHydrogen.get_active_process_blocks()
@@ -233,9 +234,13 @@ def dtree(tracker, params, dispatch, profiles, target_profiles, verbose=False):
     wind_shortage = np.clip(-wind_diff, 0, None)
 
     batt_soc = profiles['realized_soc'][0] * 1e-3
-    tank_soc = profiles['realized_h2_tank_holdup'][0] / h2_mols_per_kg
+    batt_chargeable = params['batt_mwh'] * 1e3 - profiles['realized_soc'][0]
 
+    tank_soc = profiles['realized_h2_tank_holdup'][0] / h2_mols_per_kg
     turb_energy_max = params['turb_mw'] * 1e3
+    tank_energy_charge_max = params['tank_size'] * 54.517
+    tank_energy_charged = profiles['realized_h2_tank_holdup'][0] / h2_mols_per_kg * 54.517
+    tank_energy_discharge_max = profiles['realized_h2_tank_holdup'][0] / h2_mols_per_kg * params['turb_conv']
 
     for i, process_blk in enumerate(active_blks):
         wind_excess_4hr = sum(wind_excess[i:i+4])
@@ -249,13 +254,34 @@ def dtree(tracker, params, dispatch, profiles, target_profiles, verbose=False):
             wind_shortage_4hr, wind_shortage_16hr, wind_shortage_24hr))
         y = dtree_model.predict(X.reshape(1, -1))[0]
 
-        energy_to_battery_ts = max(0, min(y[0], 1)) * params['batt_mw']
-        energy_to_pem_ts = max(0, min(y[1], 1)) * params['pem_mw']
-        batt_out = max(0, min(y[2], 1)) * params['batt_mw']
-        turb_out = max(0, min(y[3], 1)) * params['turb_mw']
+        energy_to_battery_ts = max(0, min(y[0], 1)) * params['batt_mw'] * 1e3
+        energy_to_pem_ts = max(0, min(y[1], 1)) * params['pem_mw'] * 1e3
+        batt_out = max(0, min(y[2], 1)) * params['batt_mw'] * 1e3
+        turb_out = max(0, min(y[3], 1)) * params['turb_mw'] * 1e3
 
-        wind_energy = dispatch[i] + energy_to_battery_ts + energy_to_pem_ts - batt_out - turb_out
-        wind_energy = max(0, min(wind_energy, wind_gen_max[i]))
+        batt_soc = profiles['realized_soc'][0]
+        batt_out = min(batt_out, batt_soc)
+        if batt_out / 0.95 > batt_soc:
+            batt_out = batt_soc * 0.95
+        energy_to_battery_ts = min(energy_to_battery_ts, batt_chargeable)
 
-        init_with_fixed_controls(process_blk, wind_energy, energy_to_battery_ts, energy_to_pem_ts, batt_soc, batt_out, turb_out, turb_energy_max, params['turb_conv'], verbose)
+        turb_out = min(turb_out, tank_energy_discharge_max)
+        tank_energy_discharge_max -= turb_out
+        if tank_energy_discharge_max < 1:
+            turb_out = max(turb_out - 1, 0)
+
+        energy_to_pem_ts = min(energy_to_pem_ts, tank_energy_charge_max - tank_energy_charged)
+
+        # wind_energy = dispatch[i] * 1e3 + energy_to_battery_ts + energy_to_pem_ts - batt_out - turb_out
+        # if wind_excess[i] > 0:
+        #     wind_energy = dispatch[i] + energy_to_battery_ts + energy_to_pem_ts
+        # else:
+        #     wind_energy = wind_gen_max[i] - batt_out - turb_out
+        # wind_energy = max(0, min(wind_energy, wind_gen_max[i] * 1e3))
+        wind_energy = wind_gen_max[i] * 1e3
+        energy_to_battery_ts = min(wind_energy, energy_to_battery_ts)
+        energy_to_pem_ts = min(wind_energy - energy_to_battery_ts, energy_to_pem_ts)
+
+        init_with_fixed_controls(process_blk, wind_energy, energy_to_battery_ts, energy_to_pem_ts, 
+            batt_soc - batt_out / 0.95, batt_out, turb_out, turb_energy_max, params['turb_conv'], verbose)
         pass
