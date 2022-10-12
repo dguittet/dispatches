@@ -299,9 +299,7 @@ def add_load_following_obj(mp_model, input_params):
 
         blk.meet_load = pyo.Constraint(expr=blk.output_power + blk.under_power == blk.load_power + blk.over_power)
 
-        blk.profit = pyo.Expression(expr=-input_params['shortfall_price'] * blk.under_power 
-                                         - blk.op_total_cost
-                                    )
+        blk.profit = pyo.Expression(expr=-input_params['shortfall_price'] * blk.under_power - blk.op_total_cost)
         blk.hydrogen_revenue = pyo.Expression(expr=m.h2_price_per_kg / h2_mols_per_kg * blk_tank.outlet_to_pipeline.flow_mol[0] * 3600)
 
         if 'modop' in input_params.keys() and input_params['modop']:
@@ -363,7 +361,9 @@ def add_surrogate_obj(mp_model, input_params):
     ts_per_month = len(wind_mw) // 12
     n_months = max(len(blks) // ts_per_month, 1)
     blks_month = []
+    timestep, prev_timestep = 0, 0
     for month in range(n_months):
+        prev_timestep = timestep
         timestep = min(ts_per_month * (month + 1), len(blks)) - 1
         blk = blks[timestep]
         blks_month.append(blk)
@@ -371,10 +371,8 @@ def add_surrogate_obj(mp_model, input_params):
         blk.storage_cumulated = pyo.Expression(expr=blk.fs.battery.energy_throughput[0] / 2 
                                                         + blk.fs.h2_tank.tank_throughput[0] / h2_mols_per_kg * input_params['turb_conv'])
         blk.meet_storage_CF_cumulative = pyo.Constraint(expr=blk.storage_cumulated >= blk.CF_cumulative_month)
-        if month == 0:
-            blk.storage_revenue = pyo.Expression(expr=blk.storage_cumulated * 1e-3 * (monthly_revenue_avg[month] + m.avg_rev_delta))
-        else:
-            blk.storage_revenue = pyo.Expression(expr=(blk.storage_cumulated - blks_month[-1].storage_cumulated) * 1e-3 * (monthly_revenue_avg[month] + m.avg_rev_delta))
+        for ts in range(prev_timestep, timestep + 1):
+            blks[ts].avg_revenue_per_kwh = pyo.Expression(expr=(monthly_revenue_avg[month] + m.avg_rev_delta) * 1e-3)
 
     for (i, blk) in enumerate(blks):
         blk_battery = blk.fs.battery
@@ -383,9 +381,13 @@ def add_surrogate_obj(mp_model, input_params):
         # Make sure system meets original wind load
         blk.wind_load_power = pyo.Param(default=input_params['wind_load'][i] * 1e3, mutable=True, units=pyo.units.kW)   # convert to kW
         blk.output_power = pyo.Expression(expr=blk.fs.splitter.grid_elec[0] + blk_battery.elec_out[0] + blk.fs.h2_turbine_elec)
+        blk.storage_power = pyo.Expression(expr=blk_battery.elec_out[0] + blk.fs.h2_turbine_elec)
+        blk.under_power = pyo.Var(domain=pyo.NonNegativeReals, initialize=0, units=pyo.units.kW)
 
-        blk.meet_wind_load = pyo.Constraint(expr=blk.output_power >= blk.wind_load_power)
-        blk.wind_load_profit = pyo.Expression(expr=-blk.op_total_cost)
+        blk.meet_wind_load = pyo.Constraint(expr=blk.output_power + blk.under_power >= blk.wind_load_power + blk.storage_power)
+        blk.profit = pyo.Expression(expr=-input_params['shortfall_price'] * blk.under_power 
+                                         + blk.storage_power * blk.avg_revenue_per_kwh
+                                         -blk.op_total_cost)
 
         blk.hydrogen_revenue = pyo.Expression(expr=m.h2_price_per_kg / h2_mols_per_kg * blk_tank.outlet_to_pipeline.flow_mol[0] * 3600)
 
@@ -400,8 +402,7 @@ def add_surrogate_obj(mp_model, input_params):
         blk.min_storage_soc = pyo.Constraint(expr=blk_battery.state_of_charge[0] * 1e3 
                                                     + blk_tank.tank_holdup[0] / h2_mols_per_kg * input_params['turb_conv'] >= m.PMaxMW * 1e3)
 
-    m.annual_revenue = pyo.Expression(expr=(sum([blk.wind_load_profit + blk.hydrogen_revenue for blk in blks])) * 52.143 / n_weeks
-                                            + sum([blk.storage_revenue for blk in blks_month]) * 12 / n_months)
+    m.annual_revenue = pyo.Expression(expr=(sum([blk.profit + blk.hydrogen_revenue for blk in blks])) * 52.143 / n_weeks)
 
     m.NPV = pyo.Expression(expr=-m.total_cap_cost + PA * m.annual_revenue)
     m.obj = pyo.Objective(expr=-m.NPV * 1e-8)
@@ -538,9 +539,9 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         "pem_mw": pem_cap,
         "tank_tonH2": tank_size,
         "turb_mw": turb_cap,
-        # "annual_under_power": sum(under_power) * 52/ n_weeks,
+        "annual_under_power": sum(under_power) * 52/ n_weeks,
         "annual_rev_h2": sum(h2_revenue) * 52 / n_weeks,
-        # "annual_rev_E": sum(elec_income) * 52 / n_weeks,
+        "annual_rev_E": sum(elec_income) * 52 / n_weeks,
         "NPV": value(m.NPV),
         "capital_cost": value(m.total_cap_cost)
     }

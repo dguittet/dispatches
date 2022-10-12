@@ -81,8 +81,9 @@ def test_update_model(mp_model):
     realized_soc = list(range(0, 24))
     realized_ep = [i / 2 for i in realized_soc]
     realized_holdup = list(range(0, 24))
+    realized_throughput = [0 for i in realized_soc]
 
-    mp_model.update_model(model.fs, realized_soc, realized_ep, realized_holdup)
+    mp_model.update_model(model.fs, realized_soc, realized_ep, realized_holdup, realized_throughput)
 
     active_blks = model.fs.windBatteryHydrogen.get_active_process_blocks()
 

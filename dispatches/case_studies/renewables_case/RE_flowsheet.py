@@ -263,6 +263,12 @@ def add_h2_turbine(m, inlet_pres_bar):
     m.fs.mixer.air_feed.mole_frac_comp[0, "water"].fix(0.0240)
     m.fs.mixer.air_feed.mole_frac_comp[0, "hydrogen"].fix(2e-4)
 
+    m.fs.mixer.purchased_hydrogen_feed.mole_frac_comp[0, "hydrogen"].set_value(1)
+    m.fs.mixer.purchased_hydrogen_feed.mole_frac_comp[0, "oxygen"].fix(1e-10)
+    m.fs.mixer.purchased_hydrogen_feed.mole_frac_comp[0, "argon"].fix(1e-10)
+    m.fs.mixer.purchased_hydrogen_feed.mole_frac_comp[0, "nitrogen"].fix(1e-10)
+    m.fs.mixer.purchased_hydrogen_feed.mole_frac_comp[0, "water"].fix(1e-10)
+
     m.fs.mixer.air_feed_state[0].flow_mol.setub(1e7)
     m.fs.mixer.hydrogen_feed_state[0].flow_mol.setub(1e7)
     m.fs.mixer.mixed_state[0].flow_mol.setub(1e7)
@@ -295,7 +301,7 @@ def add_h2_turbine(m, inlet_pres_bar):
     )
     m.fs.h2_turbine.compressor.deltaP.fix(compressor_dp * 1e5)
     m.fs.h2_turbine.compressor.ratioP[0.0].unfix()
-    m.fs.h2_turbine.compressor.efficiency_isentropic.fix(0.99)
+    m.fs.h2_turbine.compressor.efficiency_isentropic.fix(0.76)
     m.fs.h2_turbine.compressor.control_volume.properties_in[0.0].flow_mol.setub(1e7)
     m.fs.h2_turbine.compressor.control_volume.properties_out[0.0].flow_mol.setub(1e7)
     m.fs.h2_turbine.compressor.control_volume.properties_in[0.0].flow_mol_phase['Vap'].setub(1e7)
@@ -305,7 +311,7 @@ def add_h2_turbine(m, inlet_pres_bar):
     # Specify the Stoichiometric Conversion Rate of hydrogen
     # in the equation shown below
     # H2(g) + O2(g) --> H2O(g) + energy
-    m.fs.h2_turbine.stoic_reactor.conversion.fix(0.6)
+    m.fs.h2_turbine.stoic_reactor.conversion.fix(0.7)
     m.fs.h2_turbine.stoic_reactor.control_volume.properties_in[0.0].flow_mol_phase['Vap'].setub(1e7)
     m.fs.h2_turbine.stoic_reactor.control_volume.properties_in[0.0].flow_mol.setub(1e7)
     m.fs.h2_turbine.stoic_reactor.control_volume.properties_out[0.0].flow_mol.setub(1e7)
@@ -314,7 +320,7 @@ def add_h2_turbine(m, inlet_pres_bar):
 
     m.fs.h2_turbine.turbine.deltaP.fix(-compressor_dp * 1e5)
     m.fs.h2_turbine.turbine.ratioP.unfix()
-    m.fs.h2_turbine.turbine.efficiency_isentropic.fix(0.6)
+    m.fs.h2_turbine.turbine.efficiency_isentropic.fix(0.79)
     m.fs.h2_turbine.turbine.control_volume.properties_in[0.0].flow_mol_phase['Vap'].setub(1e7)
     m.fs.h2_turbine.turbine.control_volume.properties_in[0.0].flow_mol.setub(1e7)
     m.fs.h2_turbine.turbine.control_volume.properties_out[0.0].flow_mol.setub(1e7)

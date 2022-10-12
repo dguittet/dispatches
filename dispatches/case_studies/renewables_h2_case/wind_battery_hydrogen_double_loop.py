@@ -148,10 +148,9 @@ class MultiPeriodWindBatteryHydrogen:
         transform_design_model_to_operation_model(
             mp_wind_battery_hydrogen=blk.windBatteryHydrogen
         )
-        blk.pyomo_model = blk.windBatteryHydrogen.pyomo_model
 
         # deactivate any objective functions
-        for obj in blk.pyomo_model.component_objects(pyo.Objective):
+        for obj in blk.windBatteryHydrogen.pyomo_model.component_objects(pyo.Objective):
             obj.deactivate()
 
         # initialize time index for this block
