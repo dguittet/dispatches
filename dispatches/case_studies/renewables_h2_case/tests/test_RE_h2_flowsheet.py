@@ -12,6 +12,7 @@
 # "https://github.com/gmlc-dispatches/dispatches".
 #
 #################################################################################
+from re import A
 import pytest
 import platform
 from idaes.core.util.model_statistics import degrees_of_freedom
@@ -30,11 +31,12 @@ def input_params():
     reserves = 10
     shortfall = 10000
     start_date = '2020-06-01 00:00:00'
-    _, wind_capacity_factors, loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
+    _, wind_capacity_factors, loads_mw, wind_loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
 
     params["wind_mw"] = wind_gen_pmax
     params["wind_resource"] = wind_capacity_factors
     params["load"] = loads_mw
+    params["wind_load"] = wind_loads_mw
     params["shortfall_price"] = shortfall
     return params
 
@@ -44,10 +46,10 @@ def test_wind_battery_optimize(input_params):
     mp = wind_battery_optimize(n_time_points=7 * 24, input_params=input_params, verbose=True)
     blks = mp.get_active_process_blocks()
     assert sum(value(blk.under_power) for blk in blks) == 0
-    assert value(mp.pyomo_model.NPV) == pytest.approx(-564534565, rel=1e-3)
+    assert value(mp.pyomo_model.NPV) == pytest.approx(-571293680, rel=1e-3)
     assert value(mp.pyomo_model.annual_revenue) == pytest.approx(-34326140, rel=1e-3)
     assert value(mp.pyomo_model.battery_system_capacity) == pytest.approx(33000, rel=1e-3)
-    assert value(mp.pyomo_model.battery_system_energy) == pytest.approx(92636, rel=1e-3)
+    assert value(mp.pyomo_model.battery_system_energy) == pytest.approx(132000, rel=1e-3)
     assert value(mp.pyomo_model.wind_system_capacity) == pytest.approx(799100, rel=1e-3)
     plot_results(*record_results(mp), input_params['opt_mode'])
 
@@ -62,19 +64,20 @@ def test_wind_battery_hydrogen_optimize(input_params):
     assert design_res['turb_mw'] == pytest.approx(2.09, abs=1)
     assert design_res['annual_under_power'] == pytest.approx(0, abs=1)
     assert design_res['annual_rev_h2'] == pytest.approx(0, abs=1)
-    assert design_res['annual_rev_E'] == pytest.approx(-24898348, rel=1e-2)
-    assert design_res['NPV'] == pytest.approx(-561919245, rel=1e-2)
+    assert design_res['annual_rev_E'] == pytest.approx(-24303831, rel=1e-2)
+    assert design_res['NPV'] == pytest.approx(-555065942, rel=1e-2)
 
 
 def test_wind_battery_hydrogen_optimize_cheap_hydrogen(input_params):
     input_params["turbine_cap_cost"] *= 0.1
     design_res, _ = wind_battery_hydrogen_optimize(int(8760/12), input_params, verbose=False, plot=False)
-    assert design_res['wind_mw'] == pytest.approx(819.7, rel=1e-2)
-    assert design_res['batt_mw'] == pytest.approx(20.9, rel=1e-2)
-    assert design_res['batt_mwh'] == pytest.approx(367.83, rel=1e-2)
-    assert design_res['pem_mw'] == pytest.approx(5.07, abs=1)
-    assert design_res['tank_tonH2'] == pytest.approx(17.25, abs=3)
-    assert design_res['turb_mw'] == pytest.approx(66.96, abs=3)
+    assert design_res['wind_mw'] == pytest.approx(821, rel=1e-2)
+    assert design_res['batt_mw'] == pytest.approx(21.47, rel=1e-2)
+    assert design_res['batt_mwh'] == pytest.approx(385.36, rel=1e-2)
+    assert design_res['pem_mw'] == pytest.approx(5.12, abs=1)
+    assert design_res['tank_tonH2'] == pytest.approx(17.47, abs=3)
+    assert design_res['turb_mw'] == pytest.approx(66.38, abs=3)
     assert design_res['annual_rev_h2'] == pytest.approx(0, abs=1)
-    assert design_res['annual_rev_E'] == pytest.approx(-26876158, rel=1e-2)
-    assert design_res['NPV'] == pytest.approx(-545288043, rel=1e-2)
+    assert design_res['annual_rev_E'] == pytest.approx(-26158349, rel=1e-2)
+    assert design_res['NPV'] == pytest.approx(-539943051, rel=1e-2)
+    assert design_res["capital_cost"] == pytest.approx(136719273, rel=1e-2)

@@ -1,3 +1,17 @@
+#################################################################################
+# DISPATCHES was produced under the DOE Design Integration and Synthesis
+# Platform to Advance Tightly Coupled Hybrid Energy Systems program (DISPATCHES),
+# and is copyright (c) 2022 by the software owners: The Regents of the University
+# of California, through Lawrence Berkeley National Laboratory, National
+# Technology & Engineering Solutions of Sandia, LLC, Alliance for Sustainable
+# Energy, LLC, Battelle Energy Alliance, LLC, University of Notre Dame du Lac, et
+# al. All rights reserved.
+#
+# Please see the files COPYRIGHT.md and LICENSE.md for full copyright and license
+# information, respectively. Both files are also available online at the URL:
+# "https://github.com/gmlc-dispatches/dispatches".
+#
+#################################################################################
 import pandas as pd
 from collections import deque
 from functools import partial
@@ -27,6 +41,8 @@ def create_multiperiod_wind_battery_hydrogen_model(n_time_points, wind_capacity_
                                                 [wind_capacity_factors[t]]}} for t in range(len(wind_capacity_factors))}
 
      # create the multiperiod model object
+    if 'design_opt' in input_params.keys():
+        input_params['design_opt'] = False
     mp_wind_battery_hydrogen = MultiPeriodModel(
         n_time_points=n_time_points,
         process_model_func=partial(wind_battery_hydrogen_mp_block, input_params=input_params, verbose=False),
@@ -56,7 +72,8 @@ def transform_design_model_to_operation_model(
         if t == 0:
             b.fs.battery.initial_state_of_charge.fix()
             b.fs.h2_tank.tank_holdup_previous.fix()
-        
+            b.fs.h2_tank.tank_throughput_previous.fix()
+            
         b.fs.h2_tank.outlet_to_pipeline.flow_mol.fix(0)
 
         # deactivate periodic boundary condition
@@ -131,10 +148,9 @@ class MultiPeriodWindBatteryHydrogen:
         transform_design_model_to_operation_model(
             mp_wind_battery_hydrogen=blk.windBatteryHydrogen
         )
-        blk.pyomo_model = blk.windBatteryHydrogen.pyomo_model
 
         # deactivate any objective functions
-        for obj in blk.pyomo_model.component_objects(pyo.Objective):
+        for obj in blk.windBatteryHydrogen.pyomo_model.component_objects(pyo.Objective):
             obj.deactivate()
 
         # initialize time index for this block
@@ -159,7 +175,7 @@ class MultiPeriodWindBatteryHydrogen:
 
         return
 
-    def update_model(self, b, realized_soc, realized_energy_throughput, realized_h2_tank_holdup):
+    def update_model(self, b, realized_soc, realized_energy_throughput, realized_h2_tank_holdup, realized_h2_throughput):
         """Update variables using future wind capacity the realized state-of-charge and enrgy throughput profiles.
 
         Args:
@@ -183,6 +199,9 @@ class MultiPeriodWindBatteryHydrogen:
 
         new_init_h2_holdup = round(realized_h2_tank_holdup[-1], 2)
         active_blks[0].fs.h2_tank.tank_holdup_previous.fix(new_init_h2_holdup)
+
+        new_init_h2_throughput = round(realized_h2_throughput[-1], 2)
+        active_blks[0].fs.h2_tank.tank_throughput_previous.fix(new_init_h2_throughput)
 
         # shift the time -> update capacity_factor
         time_advance = min(len(realized_soc), 24)
@@ -259,10 +278,16 @@ class MultiPeriodWindBatteryHydrogen:
             for t in range(last_implemented_time_step + 1)
         )
 
+        realized_h2_throughput = deque(
+            pyo.value(active_blks[t].fs.battery.state_of_charge[0])
+            for t in range(last_implemented_time_step + 1)
+        )
+
         return {
             "realized_soc": realized_soc,
             "realized_energy_throughput": realized_energy_throughput,
-            "realized_h2_tank_holdup": realized_h2_tank_holdup
+            "realized_h2_tank_holdup": realized_h2_tank_holdup,
+            "realized_h2_throughput": realized_h2_throughput
         }
 
     def record_results(self, b, date=None, hour=None, **kwargs):
@@ -333,7 +358,7 @@ class MultiPeriodWindBatteryHydrogen:
                 round(pyo.value(process_blk.fs.h2_tank.tank_holdup[0] / h2_mols_per_kg), round_digits)
             )
             result_dict["Turbine Power Output [MW]"] = float(
-                round(pyo.value(process_blk.fs.h2_turbine_elec), round_digits)
+                round(pyo.value(process_blk.fs.h2_turbine_elec * 1e-3), round_digits)
             )
             result_dict["Total Cost [$]"] = float(round(pyo.value(blk.tot_cost[t]), round_digits))
 

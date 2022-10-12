@@ -12,6 +12,7 @@
 # "https://github.com/gmlc-dispatches/dispatches".
 #
 #################################################################################
+import os
 from functools import partial
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,6 +22,10 @@ from pyomo.util.infeasible import log_infeasible_constraints, log_infeasible_bou
 from idaes.apps.grid_integration.multiperiod.multiperiod import MultiPeriodModel
 from dispatches.case_studies.renewables_case.RE_flowsheet import create_model, propagate_state, value, h2_mols_per_kg, PA, battery_ramp_rate
 from dispatches.case_studies.renewables_case.load_parameters import default_input_params, h2_turb_min_flow, air_h2_ratio
+from pyomo.common.tempfiles import TempfileManager
+
+if os.environ.get("SLURMD_NODENAME"):
+    TempfileManager.tempdir = os.environ.get("LOCAL_SCRATCH")
 
 
 def wind_battery_pem_tank_turb_variable_pairs(m1, m2, tank_type):
@@ -149,10 +154,12 @@ def initialize_fs(m, tank_type, verbose=False):
         m.fs.h2_tank.outlet_to_turbine.flow_mol[0].fix(value(m.fs.h2_tank.inlet.flow_mol[0]))
         m.fs.h2_tank.outlet_to_pipeline.flow_mol[0].fix(0)
         m.fs.h2_tank.tank_holdup_previous.fix(0)
+        m.fs.h2_tank.tank_throughput_previous.fix(0)
         m.fs.h2_tank.initialize(outlvl=outlvl)
         m.fs.h2_tank.outlet_to_turbine.flow_mol[0].unfix()
         m.fs.h2_tank.outlet_to_pipeline.flow_mol[0].unfix()
         m.fs.h2_tank.tank_holdup_previous.unfix()
+        m.fs.h2_tank.tank_throughput_previous.unfix()
     else:
         m.fs.h2_tank.outlet.flow_mol[0].fix(value(m.fs.h2_tank.inlet.flow_mol[0]))
         m.fs.h2_tank.initialize(outlvl=outlvl)
@@ -222,14 +229,17 @@ def wind_battery_pem_tank_turb_model(wind_resource_config, input_params, verbose
 
     m.fs.battery.initial_state_of_charge.fix(0)
     m.fs.battery.initial_energy_throughput.fix(0)
-
-    if input_params['tank_type'] == "detailed":
+    if input_params['tank_type'] == "simple":
+        m.fs.h2_tank.tank_holdup_previous.fix(0)
+    elif input_params['tank_type'] == "detailed":
         m.fs.h2_tank.previous_state[0].temperature.fix(input_params['pem_temp'])
         m.fs.h2_tank.previous_state[0].pressure.fix(input_params['pem_bar'] * 1e5)
 
     initialize_fs(m, input_params['tank_type'], verbose=verbose)
-
-    if input_params['tank_type'] == "detailed":
+    
+    if input_params['tank_type'] == "simple":
+        m.fs.h2_tank.tank_holdup_previous.unfix()
+    elif input_params['tank_type'] == "detailed":
         m.fs.h2_tank.previous_state[0].temperature.unfix()
         m.fs.h2_tank.previous_state[0].pressure.unfix()
     m.fs.battery.initial_state_of_charge.unfix()
@@ -602,5 +612,9 @@ def wind_battery_pem_tank_turb_optimize(n_time_points, input_params, verbose=Fal
 
 
 if __name__ == "__main__":
+    input_params = default_input_params.copy()
+    input_params.pop("DA_LMPs")
+    input_params.pop("wind_resource")
+    print(input_params)
     des_res = wind_battery_pem_tank_turb_optimize(n_time_points=14 * 24, input_params=default_input_params, verbose=True, plot=True)
     print(des_res)

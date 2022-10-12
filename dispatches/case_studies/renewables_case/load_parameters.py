@@ -60,7 +60,7 @@ pem_temp = 300                              # [K]
 battery_ramp_rate = 1e8                     # kwh/hr
 h2_turb_min_flow = 1e-3
 air_h2_ratio = 10.76
-compressor_dp = 0
+compressor_dp = 10
 max_pressure_bar = 700
 
 # simple financial assumptions

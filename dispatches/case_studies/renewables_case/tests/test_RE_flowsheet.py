@@ -52,10 +52,10 @@ def input_params():
 def test_h2_valve_opening():
     valve_coef = 0.03380
     m = ConcreteModel()
-    m.fs = FlowsheetBlock(default={"dynamic": False})
-    m.fs.h2ideal_props = GenericParameterBlock(default=h2_ideal_config)
+    m.fs = FlowsheetBlock(dynamic=False)
+    m.fs.h2ideal_props = GenericParameterBlock(**h2_ideal_config)
 
-    m.fs.h2_tank = DetailedHydrogenTank(default={"property_package": m.fs.h2ideal_props, "dynamic": False})
+    m.fs.h2_tank = DetailedHydrogenTank(property_package=m.fs.h2ideal_props, dynamic=False)
     m.fs.h2_tank.tank_diameter.fix(0.1)
     m.fs.h2_tank.tank_length.fix(0.3)
     m.fs.h2_tank.control_volume.properties_in[0].pressure.setub(max_pressure_bar * 1e5)
@@ -63,10 +63,8 @@ def test_h2_valve_opening():
     m.fs.h2_tank.previous_state[0].pressure.setub(max_pressure_bar * 1e5)
     # hydrogen tank valve
     m.fs.tank_valve = Valve(
-        default={
-            "valve_function_callback": ValveFunctionType.linear,
-            "property_package": m.fs.h2ideal_props,
-        }
+        valve_function_callback=ValveFunctionType.linear,
+        property_package=m.fs.h2ideal_props,
     )
     # connect tank to the valve
     m.fs.tank_to_valve = Arc(
@@ -136,11 +134,11 @@ def test_create_model(input_params):
         assert m.fs.h2_tank.energy_balances.active
     assert m.fs.mixer.air_h2_ratio.active
     assert m.fs.mixer.purchased_hydrogen_feed.flow_mol[0].lb
-    assert value(m.fs.h2_turbine.turbine.deltaP[0]) == -2401000.0
+    assert value(m.fs.h2_turbine.turbine.deltaP[0]) == -compressor_dp * 1e5
     assert value(m.fs.mixer.air_feed.mole_frac_comp[0, "hydrogen"]) == 2e-4
 
     dof = degrees_of_freedom(m)
-    assert dof == 10
+    assert dof == 14
 
 
 def test_wind_battery_optimize(input_params):
@@ -166,13 +164,14 @@ def test_wind_battery_pem_tank_turb_optimize_simple(input_params):
     input_params['h2_price_per_kg'] = 2.0
     design_res = wind_battery_pem_tank_turb_optimize(6 * 24, input_params, verbose=False, plot=False)
     assert design_res['batt_mw'] == pytest.approx(4295, rel=1e-2)
+    assert design_res['batt_mwh'] == pytest.approx(17281, rel=1e-2)
     assert design_res['pem_mw'] == pytest.approx(0, abs=3)
     assert design_res['tank_kgH2'] == pytest.approx(0, abs=3)
     assert design_res['turb_mw'] == pytest.approx(0, abs=3)
-    assert design_res['avg_turb_kWh_per_kgH2'] == pytest.approx(1.067, rel=1e-1)
-    assert design_res['annual_rev_h2'] == pytest.approx(4, abs=5e3)
-    assert design_res['annual_rev_E'] == pytest.approx(444248531, rel=1e-2)
-    assert design_res['NPV'] == pytest.approx(1693277969, rel=1e-2)
+    assert design_res['avg_turb_kWh_per_kgH2'] == pytest.approx(24, abs=5)
+    assert design_res['annual_rev_h2'] == pytest.approx(0, abs=5e2)
+    assert design_res['annual_rev_E'] == pytest.approx(444248535, rel=1e-2)
+    assert design_res['NPV'] == pytest.approx(1693277465, rel=1e-2)
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Platform differences in IPOPT solve")
@@ -181,13 +180,14 @@ def test_wind_battery_pem_tank_turb_optimize_detailed(input_params):
     input_params['tank_type'] = 'detailed'
     input_params['design_opt'] = False
     input_params['batt_mw'] = 4295
-    input_params['fixed_pem_mw'] = 0
+    input_params['batt_mwh'] = 17281
+    input_params['pem_mw'] = 0
     design_res = wind_battery_pem_tank_turb_optimize(6 * 24, input_params=input_params, verbose=True, plot=False)
     assert design_res['batt_mw'] == pytest.approx(4295, rel=1e-2)
     assert design_res['pem_mw'] == pytest.approx(0, abs=3)
     assert design_res['tank_kgH2'] == pytest.approx(0, abs=3)
     assert design_res['turb_mw'] == pytest.approx(0, abs=3)
-    assert design_res['avg_turb_kWh_per_kgH2'] == pytest.approx(1.067, rel=1e-1)
-    assert design_res['annual_rev_h2'] == pytest.approx(191483, abs=5e3)
-    assert design_res['annual_rev_E'] == pytest.approx(444248531, rel=1e-2)
-    assert design_res['NPV'] == pytest.approx(1693277969, rel=1e-2)
+    assert design_res['avg_turb_kWh_per_kgH2'] == pytest.approx(24, abs=5)
+    assert design_res['annual_rev_h2'] == pytest.approx(0, abs=5e2)
+    assert design_res['annual_rev_E'] == pytest.approx(444248535, rel=1e-2)
+    assert design_res['NPV'] == pytest.approx(1693277465, rel=1e-2)

@@ -29,7 +29,7 @@ def mp_model():
     reserves = 10
     shortfall = 10000
     start_date = '2020-06-01 00:00:00'
-    wind_cfs, wind_resource, loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
+    wind_cfs, wind_resource, loads_mw, wind_loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
 
     params["wind_mw"] = wind_gen_pmax
     params['batt_mwh'] = params['batt_mw'] * 4
@@ -81,8 +81,9 @@ def test_update_model(mp_model):
     realized_soc = list(range(0, 24))
     realized_ep = [i / 2 for i in realized_soc]
     realized_holdup = list(range(0, 24))
+    realized_throughput = [0 for i in realized_soc]
 
-    mp_model.update_model(model.fs, realized_soc, realized_ep, realized_holdup)
+    mp_model.update_model(model.fs, realized_soc, realized_ep, realized_holdup, realized_throughput)
 
     active_blks = model.fs.windBatteryHydrogen.get_active_process_blocks()
 
@@ -99,7 +100,7 @@ def test_record_results(mp_model):
 
 
 def test_tracking(mp_model):
-    solver = pyo.SolverFactory("xpress_direct")
+    solver = pyo.SolverFactory("cbc")
     tracker_object = Tracker(
         tracking_model_object=mp_model,
         tracking_horizon=24,
