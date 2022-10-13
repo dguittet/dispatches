@@ -331,29 +331,24 @@ def add_surrogate_obj(mp_model, input_params):
 
     m.PMaxMW = pyo.Expression(expr=(m.battery_system_capacity + m.turb_system_capacity) * 1e-3)
     m.PMaxMW_ub = pyo.Constraint(expr=m.PMaxMW <= 355)
-    m.HR_avg_0 = pyo.Var(domain=pyo.NonNegativeReals, initialize=11616 * m.PMaxMW)
-    m.HR_avg_0.setlb(6887)
-    m.HR_avg_0.setub(19794)
+    m.HR_avg = pyo.Var(domain=pyo.NonNegativeReals, initialize=19119)
+    m.HR_avg.setlb(0)
+    m.HR_avg.setub(24763)
     # m.HR_incr_1 = pyo.Expression(expr=0.617 * m.HR_avg_0)
     # m.HR_incr_2 = pyo.Expression(expr=0.684 * m.HR_avg_0)
 
-    m.L = pyo.Expression(expr=sum([(-0.00013157516117854665 * m.HR_avg_0),
-                                    (-2.2592344881735425e-07 * m.PMaxMW ** 2),
-                                    (4.034252620659616e-09 * m.HR_avg_0 ** 2),
-                                    (-5.510328020461569e-10 * m.PMaxMW)]) + 1.032387)
-    m.k = pyo.Expression(expr=sum([(-0.18430594283973323 * m.HR_avg_0),
-                                    (-0.002965030619685851 * m.PMaxMW ** 2),
-                                    (0.0001159065923267955 * m.HR_avg_0 * m.PMaxMW),
-                                    (7.9612192342704e-06 * m.HR_avg_0 ** 2),
-                                    (-7.231782002169402e-06 * m.PMaxMW)]) + 1005.174)
+    a, b, c, d, e = (1.02457269, 1.00285915, 17.91238982, 0.58524713, 0.04870447)
+    m.L = pyo.Expression(expr=a - (b / (1 + pyo.exp(-c * (m.HR_avg / 24763 - d))) + (e * m.PMaxMW / 355)))
+
+    a, b, c = (4.49007315, 0.40534523, 0.9516349)
+    m.k = pyo.Expression(expr=pyo.exp(a * m.HR_avg / 24763 + b * m.PMaxMW / 355 - c))
     m.x_0 = pyo.Expression(expr=0.5)
     # m.avg_rev_delta = pyo.Expression(expr=-0.00347 * m.HR_avg_0 + -0.066042 * m.PMaxMW + 40.84795)
     m.avg_rev_delta = pyo.Expression(expr=0)
 
     m.L_lb = pyo.Constraint(expr=m.L >= 0)
     m.L_ub = pyo.Constraint(expr=m.L <= 1)
-    m.x_0_lb = pyo.Constraint(expr=m.x_0 >= 0)
-    m.x_0_ub = pyo.Constraint(expr=m.x_0 <= 1)
+    m.k_lb = pyo.Constraint(expr=m.k >= 0)
 
     monthly_revenue_avg = [30.43640391, 29.05218992, 34.99922776, 30.88766605, 31.19209689,
        40.32723397, 54.14020062, 53.17627986, 47.71013634, 36.36529442, 30.94663306, 36.35684594]
@@ -611,10 +606,11 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
 
 if __name__ == "__main__":
     re_h2_parameters["pem_cap_cost"] *= 0.1
-    # re_h2_parameters["h2_price_per_kg"] = 5
+    re_h2_parameters["h2_price_per_kg"] = 0
     re_h2_parameters["turbine_cap_cost"] *= 0.1
     re_h2_parameters["batt_mw"] = 0
     re_h2_parameters["turb_mw"] = 0
+    re_h2_parameters['opt_mode'] = "surrogate"
     re_h2_parameters["tank_size"] = re_h2_parameters['turb_mw'] * 1e3 / re_h2_parameters['turb_conv']
-    des_res, df_res = wind_battery_hydrogen_optimize(n_time_points=int(8784/12) * 1, input_params=re_h2_parameters, verbose=False, plot=False)
+    des_res, df_res = wind_battery_hydrogen_optimize(n_time_points=int(8784/2), input_params=re_h2_parameters, verbose=False, plot=False)
     print(des_res)
