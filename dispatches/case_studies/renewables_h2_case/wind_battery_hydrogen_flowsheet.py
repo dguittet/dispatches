@@ -21,7 +21,7 @@ import idaes.logger as idaeslog
 from pyomo.util.infeasible import log_infeasible_constraints, log_infeasible_bounds, log_close_to_bounds
 from idaes.apps.grid_integration.multiperiod.multiperiod import MultiPeriodModel
 from dispatches.case_studies.renewables_case.RE_flowsheet import create_model, propagate_state, value, h2_mols_per_kg, PA, battery_ramp_rate
-from dispatches.case_studies.renewables_h2_case.re_h2_parameters import re_h2_parameters, kg_to_tons
+from dispatches.case_studies.renewables_h2_case.re_h2_parameters import re_h2_parameters, kg_to_tons, n_hrs, re_h2_dir
 
 
 def wind_battery_hydrogen_variable_pairs(m1, m2):
@@ -264,19 +264,19 @@ def calculate_operating_costs(mp_model, input_params):
         blk_tank = blk.fs.h2_tank
 
         blk_wind.op_total_cost = pyo.Expression(
-            expr=blk_wind.system_capacity * blk_wind.op_cost / 8760,
+            expr=blk_wind.system_capacity * blk_wind.op_cost / n_hrs,
         )
         blk_battery.op_total_cost = pyo.Expression(
             expr=blk_battery.degradation_rate * (blk_battery.energy_throughput[0] - blk_battery.initial_energy_throughput) * input_params["batt_rep_cost_kwh"]
         )
         blk_pem.op_total_cost = pyo.Expression(
-            expr=m.pem_system_capacity * blk_pem.op_cost / 8760 + blk_pem.var_cost * blk_pem.electricity[0],
+            expr=m.pem_system_capacity * blk_pem.op_cost / n_hrs + blk_pem.var_cost * blk_pem.electricity[0],
         )
         blk_tank.op_total_cost = pyo.Expression(
-            expr=m.h2_tank_size * blk_tank.op_cost / 8760
+            expr=m.h2_tank_size * blk_tank.op_cost / n_hrs
         )
         blk.fs.turbine_op_total_cost = pyo.Expression(
-            expr=m.turb_system_capacity * input_params["turbine_op_cost"] / 8760 + input_params["turbine_var_cost"] * blk.fs.h2_turbine_elec
+            expr=m.turb_system_capacity * input_params["turbine_op_cost"] / n_hrs + input_params["turbine_var_cost"] * blk.fs.h2_turbine_elec
         )
         blk.op_total_cost = pyo.Expression(expr=blk_wind.op_total_cost
                                             + blk_pem.op_total_cost
@@ -328,14 +328,15 @@ def add_load_following_obj(mp_model, input_params):
 
 def add_surrogate_obj(mp_model, input_params):
     # surrogate model parameters
-    L_a, L_b, L_c, L_d, L_e = (1.02457269, 1.00285915, 17.91238982, 0.58524713, 0.04870447)
-    k_a, k_b, k_c = (3.74116426e+00, -5.37475741e-02,  2.85107112e-03)
-    A_0, A_a, A_b = (31.47783299, -36.14840535, 4.40874982)
-    w_0, w_a, w_b = (18.56157457, 3.40126885, -12.69353272)
-    m_0, m_a, m_b = (10.92958599, 0.24843855, -6.88974396)
-    y_0_0, y_0_a, y_0_b = (8.56406856, -11.43706619, 0.6109556)
+    L_a, L_b, L_c, L_d, L_e = (1.02629254, 1.01123214, 17.05785483, 0.58490096, 0.05185373)
+    k_a, k_b, k_c = (3.74116613, -5.37471860e-02, 2.85194646e-03)
+    A_0, A_a, A_b = (31.47032532, -36.14239165, 4.41310189)
+    w_0, w_a, w_b = (18.55789012, 3.40416608, -12.69136832)
+    m_0, m_a, m_b = (10.92758574, 0.25000692, -6.88856666)
+    y_0_0, y_0_a, y_0_b = (8.56406822, -11.43706554, 0.61095527)
     max_PMaxMW = 355
     max_HR_avg = 24763
+    max_hrs = 8784
 
     m = mp_model.pyomo_model
     blks = mp_model.get_active_process_blocks()
@@ -391,8 +392,6 @@ def add_surrogate_obj(mp_model, input_params):
             blk.fs.windpower.electricity[0].set_value(wind_kw)
             blk.fs.splitter.grid_elec[0].set_value(wind_kw)
             blk.fs.splitter.electricity[0].set_value(wind_kw)
-        if abs(value(blk.wind_vs_peaker_power)) > 1:
-            stop = 0
 
         if i == 0:
             blk.peaker_cumulated_mwh = pyo.Expression(expr=blk.peaker_power)
@@ -418,19 +417,20 @@ def add_surrogate_obj(mp_model, input_params):
         prev_timestep = timestep
         timestep = min(ts_per_month * (month + 1), len(blks)) - 1
         blk = blks[timestep]
-        blk.mwh_cumulative_month = pyo.Expression(expr=m.L / (1 + pyo.exp(-m.k * (month/12 - m.x_0))))
+        blk.cf_cumulative_month = pyo.Expression(expr=m.L / (1 + pyo.exp(-m.k * (month/12 - m.x_0))))
         blk.storage_cumulated_mwh = pyo.Expression(expr=(blk.fs.battery.energy_throughput[0] / 2 
                                                         + blk.fs.h2_tank.tank_throughput[0] / h2_mols_per_kg * input_params['turb_conv']) * 1e-3)
-        blk.meet_peaker_CF_cumulative = pyo.Constraint(expr=blk.peaker_cumulated_mwh >= blk.mwh_cumulative_month)
+        blk.meet_peaker_CF_cumulative = pyo.Constraint(expr=blk.peaker_cumulated_mwh >= blk.cf_cumulative_month * max_hrs * m.PMaxMW)
 
         blk.avg_revenue_per_mwh = pyo.Expression(expr=(m.A * pyo.exp(-(m.w * month/12 - m.m)**2) + m.y_0))
-        blk.energy_sold_month = pyo.Var(domain=pyo.NonNegativeReals, initialize=0)
+        blk.cf_sold_month = pyo.Var(domain=pyo.NonNegativeReals, initialize=0)
         if month == 0:
-            blk.energy_sold_month_ub = pyo.Constraint(expr=blk.energy_sold_month <= blk.mwh_cumulative_month)
+            blk.cf_sold_month_ub = pyo.Constraint(expr=blk.cf_sold_month <= blk.cf_cumulative_month)
         else:
-            blk.energy_sold_month_ub = pyo.Constraint(expr=blk.energy_sold_month <= blk.mwh_cumulative_month - blks_month[-1].mwh_cumulative_month)
+            blk.cf_sold_month_ub = pyo.Constraint(expr=blk.cf_sold_month <= blk.cf_cumulative_month - blks_month[-1].cf_cumulative_month)
             
-        blk.revenue = pyo.Expression(expr=blk.energy_sold_month * blk.avg_revenue_per_mwh * 8760 * m.PMaxMW)
+
+        blk.revenue = pyo.Expression(expr=blk.cf_sold_month * blk.avg_revenue_per_mwh * max_hrs * m.PMaxMW)
         blks_month.append(blk)
 
     m.annual_revenue = pyo.Expression(expr=sum([blk.costs + blk.hydrogen_revenue for blk in blks]) * 52.143 / n_weeks
@@ -585,18 +585,18 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         peaker_cumulated_mwh = [pyo.value(blks[i].peaker_cumulated_mwh) for i in range(n_time_points)]
 
         revenue = [pyo.value(blk.revenue) for blk in blks_month]
-        energy_sold_month = [pyo.value(blk.energy_sold_month) for blk in blks_month]
+        cf_sold_month = [pyo.value(blk.cf_sold_month) for blk in blks_month]
         storage_cumulated_mwh = [pyo.value(blk.storage_cumulated_mwh) for blk in blks_month]
         peaker_cumulated_mwh = [pyo.value(blk.peaker_cumulated_mwh) for blk in blks_month]
         avg_revenue_per_mwh = [pyo.value(blk.avg_revenue_per_mwh) for blk in blks_month]
-        mwh_cumulative_month = [pyo.value(blk.mwh_cumulative_month) for blk in blks_month]
+        cf_cumulative_month = [pyo.value(blk.cf_cumulative_month) for blk in blks_month]
 
         design_res["annual_rev_E"] = sum(revenue) * 8784 / n_time_points
-        design_res["annual_sold_E"] = sum(energy_sold_month) * 8784 / n_time_points
+        design_res["annual_sold_E"] = sum(cf_sold_month) * 8784 / n_time_points * value(m.PMaxMW)
         design_res["avg_revenue_per_mwh"] = sum(avg_revenue_per_mwh) / len(avg_revenue_per_mwh)
         design_res['PMaxMW'] = value(m.PMaxMW)
         design_res['Bid_$/MW'] = value(m.HR_avg) * 3.88722 * 1e-3 # Model fit from NG plants with 3.88722 $/MMBTU 
-
+        design_res['Annual Peaker CF'] = cf_cumulative_month[-1]
 
     print(design_res)
 
@@ -644,7 +644,7 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
             axs[2].step(months, peaker_cumulated_mwh, label="Total peaker cumulative")
             axs2 = axs[2].twinx()
             axs2.step(months, avg_revenue_per_mwh, label="Avg Monthly Revenue [$/MWh]", color='k')
-            axs2.legend()
+            axs2.legend(loc='center right')
 
         axs[2].legend()
         axs[2].grid(visible=True, which='major', color='k', linestyle='--', alpha=0.2)
@@ -668,13 +668,14 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     df['Turbine H2 Input [kg]"'] = np.array(h2_turbine_in)
     df['Tank Holdup [kg]'] = np.array(h2_tank_holdup)
     df['Turbine Power Output [MW]'] = np.array(h2_turbine_elec) * 1e-3
-    if input_params['opt_mode'] != 'surrogate':
+    if input_params['opt_mode'] == 'surrogate':
+        df["Peaker Power [MW]"] = peaker_power
         ts_per_month = 8784 // 12
-        n_months = max(len(blks) // ts_per_month, 1)
-        peaker_cumulated_mwh = np.tile(peaker_cumulated_mwh, ts_per_month)
-        avg_revenue_per_mwh = np.tile(avg_revenue_per_mwh, ts_per_month)
-        df['Peaker Revenue [$/MW]'] = np.array(avg_revenue_per_mwh)
-        df['Peaker Power Cumulative [MWh]'] = np.array(peaker_cumulated_mwh)
+        df['Peaker Energy Price [$/MWh]'] = np.tile(avg_revenue_per_mwh, ts_per_month)
+        df['Peaker CF Sold [1]'] = np.tile(cf_sold_month, ts_per_month)
+        df['Peaker Revenue [$]'] = np.tile(revenue, ts_per_month)
+        df['Peaker Delivered Power Cumulative [MWh]'] = np.tile(peaker_cumulated_mwh, ts_per_month)
+        df['Peaker Dispatch CF Cumulative [1]'] = np.tile(cf_cumulative_month, ts_per_month)
 
     return design_res, df
 
@@ -691,4 +692,5 @@ if __name__ == "__main__":
     re_h2_parameters['opt_mode'] = "surrogate"
     re_h2_parameters["tank_size"] = re_h2_parameters['turb_mw'] * 1e3 / re_h2_parameters['turb_conv']
     des_res, df_res = wind_battery_hydrogen_optimize(n_time_points=int(8784/2), input_params=re_h2_parameters, verbose=False, plot=False)
+    df_res.to_parquet(re_h2_dir / "design_results.parquet")
     print(des_res)
