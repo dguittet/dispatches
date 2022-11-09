@@ -56,7 +56,7 @@ reserves = 15
 shortfall = 500
 start_date = '2020-01-01 00:00:00'
 wind_cfs, wind_resource, loads_mw, wind_loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
-
+n_hrs = len(wind_resource)
 
 re_h2_parameters = {
     "wind_mw": wind_gen_pmax,
