@@ -267,6 +267,9 @@ def calculate_fixed_costs(m, input_params):
 
 
 def calculate_variable_costs(mp_model, input_params):
+    m = mp_model.pyomo_model
+    blks = mp_model.get_active_process_blocks()
+
     m.battery_var_cost_unit = pyo.Param(
         initialize=input_params["batt_rep_cost_kwh"],
         doc="variable cost of battery degradation $/kwH")
@@ -277,24 +280,20 @@ def calculate_variable_costs(mp_model, input_params):
         initialize=input_params["turbine_var_cost"],
         doc="variable cost of operating turbine in $/kWh")
 
-    m = mp_model.pyomo_model
-    blks = mp_model.get_active_process_blocks()
-
     for blk in blks:
         blk_battery = blk.fs.battery
         blk_pem = blk.fs.pem
-        blk_turb = blk.fs.h2_turbine
 
         blk_battery.var_cost = pyo.Expression(
             expr=blk_battery.degradation_rate * (blk_battery.energy_throughput[0] - blk_battery.initial_energy_throughput) * m.battery_var_cost_unit)
         blk_pem.var_cost = pyo.Expression(
             expr=m.pem_var_cost_unit * blk_pem.electricity[0])
-        blk_turb.var_cost = pyo.Expression(
+        blk.turb_var_cost = pyo.Expression(
             expr=m.h2_turbine_var_cost_unit * blk.fs.h2_turbine_elec
         )
         blk.var_total_cost = pyo.Expression(expr=blk_pem.var_cost
                                                  + blk_battery.var_cost
-                                                 + blk_turb.var_cost)
+                                                 + blk.turb_var_cost)
 
 
 def add_load_following_obj(mp_model, input_params):
