@@ -57,27 +57,6 @@ def wind_battery_hydrogen_periodic_variable_pairs(m1, m2):
     return pairs
 
 
-def wind_battery_hydrogen_om_costs(m, input_params):
-    """
-    Add unit fixed and variable operating costs as parameters for the unit model m
-    """
-    m.fs.windpower.op_cost = pyo.Param(
-        initialize=input_params["wind_op_cost"],
-        doc="fixed cost of operating wind plant $/kW-yr")
-    m.fs.pem.op_cost = pyo.Param(
-        initialize=input_params["pem_op_cost"],
-        doc="fixed cost of operating pem $/kW-yr"
-    )
-    m.fs.pem.var_cost = pyo.Param(
-        initialize=input_params["pem_var_cost"],
-        doc="variable operating cost of pem $/kWh"
-    )
-    m.fs.h2_tank.op_cost = pyo.Param(
-        initialize=input_params["tank_op_cost"],
-        doc="fixed cost of operating tank in $/m^3"
-    )
-
-
 def initialize_fs(m, input_params=dict(), verbose=False):
     """
     Initializing the flowsheet is done starting with the wind model and propagating the solved initial state to downstream models.
@@ -185,8 +164,6 @@ def wind_battery_hydrogen_model(wind_resource_config, input_params, verbose):
     batt.energy_up_ramp = pyo.Constraint(
         expr=batt.state_of_charge[0] - batt.initial_state_of_charge <= battery_ramp_rate)
 
-    wind_battery_hydrogen_om_costs(m, input_params)
-
     return m
 
 
@@ -252,37 +229,72 @@ def size_constraints(mp_model, input_params):
     m.tank_max_p = pyo.Constraint(mp_model.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.h2_tank.tank_holdup[0] / h2_mols_per_kg <= m.h2_tank_size)
     m.turb_max_p = pyo.Constraint(mp_model.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.h2_turbine_elec <= m.turb_system_capacity)
 
+def calculate_capital_costs(m, input_params):
+    # capital costs
+    m.wind_cap_cost = pyo.Param(default=input_params["wind_cap_cost"], mutable=True)
+    m.pem_cap_cost = pyo.Param(default=input_params["pem_cap_cost"], mutable=True)
+    m.batt_cap_cost_kw = pyo.Param(default=input_params["batt_cap_cost_kw"], mutable=True)
+    m.batt_cap_cost_kwh = pyo.Param(default=input_params["batt_cap_cost_kwh"], mutable=True)
+    m.tank_cap_cost = pyo.Param(default=input_params["tank_cap_cost_per_kg"], mutable=True)
+    m.turb_cap_cost = pyo.Param(default=input_params["turbine_cap_cost"], mutable=True)
 
-def calculate_operating_costs(mp_model, input_params):
+    m.total_cap_cost = pyo.Expression(expr=m.wind_cap_cost * m.wind_add_system_capacity
+                                       + m.batt_cap_cost_kw * m.battery_system_capacity
+                                       + m.batt_cap_cost_kwh * m.battery_system_energy
+                                       + m.pem_cap_cost * m.pem_system_capacity
+                                       + m.tank_cap_cost * m.h2_tank_size
+                                       + m.turb_cap_cost * m.turb_system_capacity)
+
+
+def calculate_fixed_costs(m, input_params):
+    m.windpower_op_cost_unit = pyo.Param(
+        initialize=input_params["wind_op_cost"],
+        doc="fixed cost of operating wind plant $/kW-yr")
+    m.pem_op_cost_unit = pyo.Param(
+        initialize=input_params["pem_op_cost"],
+        doc="fixed cost of operating pem $/kW-yr")
+    m.h2_tank_op_cost_unit = pyo.Param(
+        initialize=input_params["tank_op_cost"],
+        doc="fixed cost of operating tank in $/kg-yr")
+    m.h2_turbine_op_cost_unit = pyo.Param(
+        initialize=input_params["turbine_op_cost"],
+        doc="fixed cost of operating turbine in $/kW-yr")
+
+    m.annual_fixed_cost = pyo.Expression(expr=m.wind_system_capacity * m.windpower_op_cost_unit
+                                              + m.pem_system_capacity * m.pem_op_cost_unit
+                                              + m.h2_tank_size * m.h2_tank_op_cost_unit
+                                              + m.turb_system_capacity * m.h2_turbine_op_cost_unit)
+
+
+def calculate_variable_costs(mp_model, input_params):
+    m.battery_var_cost_unit = pyo.Param(
+        initialize=input_params["batt_rep_cost_kwh"],
+        doc="variable cost of battery degradation $/kwH")
+    m.pem_var_cost_unit = pyo.Param(
+        initialize=input_params["pem_var_cost"],
+        doc="variable operating cost of pem $/kWh")
+    m.h2_turbine_var_cost_unit = pyo.Param(
+        initialize=input_params["turbine_var_cost"],
+        doc="variable cost of operating turbine in $/kWh")
+
     m = mp_model.pyomo_model
     blks = mp_model.get_active_process_blocks()
 
     for blk in blks:
-        blk_wind = blk.fs.windpower
         blk_battery = blk.fs.battery
         blk_pem = blk.fs.pem
-        blk_tank = blk.fs.h2_tank
+        blk_turb = blk.fs.h2_turbine
 
-        blk_wind.op_total_cost = pyo.Expression(
-            expr=blk_wind.system_capacity * blk_wind.op_cost / n_hrs,
+        blk_battery.var_cost = pyo.Expression(
+            expr=blk_battery.degradation_rate * (blk_battery.energy_throughput[0] - blk_battery.initial_energy_throughput) * m.battery_var_cost_unit)
+        blk_pem.var_cost = pyo.Expression(
+            expr=m.pem_var_cost_unit * blk_pem.electricity[0])
+        blk_turb.var_cost = pyo.Expression(
+            expr=m.h2_turbine_var_cost_unit * blk.fs.h2_turbine_elec
         )
-        blk_battery.op_total_cost = pyo.Expression(
-            expr=blk_battery.degradation_rate * (blk_battery.energy_throughput[0] - blk_battery.initial_energy_throughput) * input_params["batt_rep_cost_kwh"]
-        )
-        blk_pem.op_total_cost = pyo.Expression(
-            expr=m.pem_system_capacity * blk_pem.op_cost / n_hrs + blk_pem.var_cost * blk_pem.electricity[0],
-        )
-        blk_tank.op_total_cost = pyo.Expression(
-            expr=m.h2_tank_size * blk_tank.op_cost / n_hrs
-        )
-        blk.fs.turbine_op_total_cost = pyo.Expression(
-            expr=m.turb_system_capacity * input_params["turbine_op_cost"] / n_hrs + input_params["turbine_var_cost"] * blk.fs.h2_turbine_elec
-        )
-        blk.op_total_cost = pyo.Expression(expr=blk_wind.op_total_cost
-                                            + blk_pem.op_total_cost
-                                            + blk_battery.op_total_cost
-                                            + blk_tank.op_total_cost
-                                            + blk.fs.turbine_op_total_cost)
+        blk.var_total_cost = pyo.Expression(expr=blk_pem.var_cost
+                                                 + blk_battery.var_cost
+                                                 + blk_turb.var_cost)
 
 
 def add_load_following_obj(mp_model, input_params):
@@ -303,7 +315,7 @@ def add_load_following_obj(mp_model, input_params):
 
         blk.meet_load = pyo.Constraint(expr=blk.output_power + blk.under_power == blk.load_power + blk.over_power)
 
-        blk.costs = pyo.Expression(expr=-input_params['shortfall_price'] * blk.under_power - blk.op_total_cost)
+        blk.costs = pyo.Expression(expr=input_params['shortfall_price'] * blk.under_power + blk.var_total_cost)
         blk.hydrogen_revenue = pyo.Expression(expr=m.h2_price_per_kg / h2_mols_per_kg * blk_tank.outlet_to_pipeline.flow_mol[0] * 3600)
 
         if 'modop' in input_params.keys() and input_params['modop']:
@@ -320,7 +332,8 @@ def add_load_following_obj(mp_model, input_params):
         if 'min_tank_soc' in input_params.keys():
             blk.min_tank_soc = pyo.Constraint(expr=blk_tank.tank_holdup[0] / h2_mols_per_kg * input_params['turb_conv'] >= input_params['min_tank_soc'] * 1e3)
 
-    m.annual_revenue = pyo.Expression(expr=(sum([blk.profit + blk.hydrogen_revenue for blk in blks])) * 52.143 / n_weeks)
+    m.annual_revenue = pyo.Expression(expr=(sum([-blk.costs + blk.hydrogen_revenue for blk in blks])) * 52.143 / n_weeks
+                                           - m.annual_fixed_cost)
 
     m.NPV = pyo.Expression(expr=-m.total_cap_cost + PA * m.annual_revenue)
     m.obj = pyo.Objective(expr=-m.NPV * 1e-8)
@@ -387,18 +400,18 @@ def add_surrogate_obj(mp_model, input_params):
 
         blk.wind_vs_peaker_power = pyo.Constraint(expr=blk.output_power + blk.under_power == blk.wind_load_power + blk.peaker_power)
 
-        if abs(value(blk.wind_vs_peaker_power)) > 1:
-            wind_kw = input_params['wind_load'][i] * 1e3
-            blk.fs.windpower.electricity[0].set_value(wind_kw)
-            blk.fs.splitter.grid_elec[0].set_value(wind_kw)
-            blk.fs.splitter.electricity[0].set_value(wind_kw)
+        # if abs(value(blk.wind_vs_peaker_power)) > 1:
+        #     wind_kw = input_params['wind_load'][i] * 1e3
+        #     blk.fs.windpower.electricity[0].set_value(wind_kw)
+        #     blk.fs.splitter.grid_elec[0].set_value(wind_kw)
+        #     blk.fs.splitter.electricity[0].set_value(wind_kw)
 
         if i == 0:
             blk.peaker_cumulated_mwh = pyo.Expression(expr=blk.peaker_power)
         else:
             blk.peaker_cumulated_mwh = pyo.Expression(expr=blk.peaker_power + blks[i-1].peaker_power)
 
-        blk.costs = pyo.Expression(expr=-input_params['shortfall_price'] * blk.under_power -blk.op_total_cost)
+        blk.costs = pyo.Expression(expr=input_params['shortfall_price'] * blk.under_power + blk.var_total_cost)
         blk.hydrogen_revenue = pyo.Expression(expr=m.h2_price_per_kg / h2_mols_per_kg * blk_tank.outlet_to_pipeline.flow_mol[0] * 3600)
 
         if 'modop' in input_params.keys() and input_params['modop']:
@@ -433,8 +446,9 @@ def add_surrogate_obj(mp_model, input_params):
         blk.revenue = pyo.Expression(expr=blk.cf_sold_month * blk.avg_revenue_per_mwh * max_hrs * m.PMaxMW)
         blks_month.append(blk)
 
-    m.annual_revenue = pyo.Expression(expr=sum([blk.costs + blk.hydrogen_revenue for blk in blks]) * 52.143 / n_weeks
-                                            + sum([blk.revenue for blk in blks_month]) * 12 / n_months)
+    m.annual_revenue = pyo.Expression(expr=sum([-blk.costs + blk.hydrogen_revenue for blk in blks]) * 52.143 / n_weeks
+                                            + sum([blk.revenue for blk in blks_month]) * 12 / n_months
+                                            - m.annual_fixed_cost)
 
     m.NPV = pyo.Expression(expr=-m.total_cap_cost + PA * m.annual_revenue)
     m.obj = pyo.Objective(expr=-m.NPV * 1e-8)
@@ -487,25 +501,12 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     
     size_constraints(mp_model, input_params)
     
-    # capital costs
-    m.wind_cap_cost = pyo.Param(default=input_params["wind_cap_cost"], mutable=True)
-    m.pem_cap_cost = pyo.Param(default=input_params["pem_cap_cost"], mutable=True)
-    m.batt_cap_cost_kw = pyo.Param(default=input_params["batt_cap_cost_kw"], mutable=True)
-    m.batt_cap_cost_kwh = pyo.Param(default=input_params["batt_cap_cost_kwh"], mutable=True)
-    m.tank_cap_cost = pyo.Param(default=input_params["tank_cap_cost_per_kg"], mutable=True)
-    m.turb_cap_cost = pyo.Param(default=input_params["turbine_cap_cost"], mutable=True)
-
-    m.total_cap_cost = pyo.Expression(expr=m.wind_cap_cost * m.wind_add_system_capacity
-                                       + m.batt_cap_cost_kw * m.battery_system_capacity
-                                       + m.batt_cap_cost_kwh * m.battery_system_energy
-                                       + m.pem_cap_cost * m.pem_system_capacity
-                                       + m.tank_cap_cost * m.h2_tank_size
-                                       + m.turb_cap_cost * m.turb_system_capacity)
-
     # Add hydrogen market
     m.h2_price_per_kg = pyo.Param(default=input_params['h2_price_per_kg'], mutable=True)
 
-    calculate_operating_costs(mp_model, input_params)
+    calculate_capital_costs(m, input_params)
+    calculate_fixed_costs(m, input_params)
+    calculate_variable_costs(mp_model, input_params)
 
     solvers_list = ['xpress_direct', 'cbc', 'ipopt']
     if input_params['opt_mode'] == "meet_load":
@@ -522,7 +523,7 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     if not opt:
         raise RuntimeWarning("No available solvers")
 
-    opt.options['tol'] = 1e-5
+    opt.options['tol'] = 1e-7
     opt.options['max_iter'] = 200
 
     if verbose:
