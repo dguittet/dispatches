@@ -329,7 +329,7 @@ def add_load_following_obj(mp_model, input_params):
 def add_surrogate_obj(mp_model, input_params):
     # surrogate model parameters
     L_a, L_b, L_c, L_d, L_e = (1.02457269, 1.00285915, 17.91238982, 0.58524713, 0.04870447)
-    x_0_a, x_0_b, x_0_c = (4.49007315, 0.40534523, 0.9516349)
+    k_a, k_b, k_c = (3.74116426e+00, -5.37475741e-02,  2.85107112e-03)
     A_0, A_a, A_b = (31.47783299, -36.14840535, 4.40874982)
     w_0, w_a, w_b = (18.56157457, 3.40126885, -12.69353272)
     m_0, m_a, m_b = (10.92958599, 0.24843855, -6.88974396)
@@ -353,7 +353,7 @@ def add_surrogate_obj(mp_model, input_params):
 
     m.L = pyo.Expression(expr=L_a - (L_b / (1 + pyo.exp(-L_c * (m.HR_avg / max_HR_avg - L_d))) + (L_e * m.PMaxMW / max_PMaxMW)))
 
-    m.k = pyo.Expression(expr=pyo.exp(x_0_a * m.HR_avg / max_HR_avg + x_0_b * m.PMaxMW / max_PMaxMW - x_0_c))
+    m.k = pyo.Expression(expr=pyo.exp(k_a * m.HR_avg / max_HR_avg + k_b * m.PMaxMW / max_PMaxMW - k_c))
     m.x_0 = pyo.Expression(expr=0.5)
 
     m.L_lb = pyo.Constraint(expr=m.L >= 0)
@@ -418,19 +418,19 @@ def add_surrogate_obj(mp_model, input_params):
         prev_timestep = timestep
         timestep = min(ts_per_month * (month + 1), len(blks)) - 1
         blk = blks[timestep]
-        blk.mwh_cumulative_month = pyo.Expression(expr=m.L / (1 + pyo.exp(-m.k * (month/12 - m.x_0))) * 8760 * m.PMaxMW)
+        blk.mwh_cumulative_month = pyo.Expression(expr=m.L / (1 + pyo.exp(-m.k * (month/12 - m.x_0))))
         blk.storage_cumulated_mwh = pyo.Expression(expr=(blk.fs.battery.energy_throughput[0] / 2 
                                                         + blk.fs.h2_tank.tank_throughput[0] / h2_mols_per_kg * input_params['turb_conv']) * 1e-3)
         blk.meet_peaker_CF_cumulative = pyo.Constraint(expr=blk.peaker_cumulated_mwh >= blk.mwh_cumulative_month)
 
         blk.avg_revenue_per_mwh = pyo.Expression(expr=(m.A * pyo.exp(-(m.w * month/12 - m.m)**2) + m.y_0))
-        blk.energy_sold_month = pyo.Var(domain=pyo.NonNegativeReals, initialize=0, units=pyo.units.MW)
+        blk.energy_sold_month = pyo.Var(domain=pyo.NonNegativeReals, initialize=0)
         if month == 0:
             blk.energy_sold_month_ub = pyo.Constraint(expr=blk.energy_sold_month <= blk.mwh_cumulative_month)
         else:
             blk.energy_sold_month_ub = pyo.Constraint(expr=blk.energy_sold_month <= blk.mwh_cumulative_month - blks_month[-1].mwh_cumulative_month)
             
-        blk.revenue = pyo.Expression(expr=blk.energy_sold_month * blk.avg_revenue_per_mwh)
+        blk.revenue = pyo.Expression(expr=blk.energy_sold_month * blk.avg_revenue_per_mwh * 8760 * m.PMaxMW)
         blks_month.append(blk)
 
     m.annual_revenue = pyo.Expression(expr=sum([blk.costs + blk.hydrogen_revenue for blk in blks]) * 52.143 / n_weeks
@@ -583,7 +583,6 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     if input_params['opt_mode'] == 'surrogate':
         peaker_power = [pyo.value(blks[i].peaker_power) for i in range(n_time_points)]
         peaker_cumulated_mwh = [pyo.value(blks[i].peaker_cumulated_mwh) for i in range(n_time_points)]
-        peaker_power = [pyo.value(blks[i].peaker_power) for i in range(n_time_points)]
 
         revenue = [pyo.value(blk.revenue) for blk in blks_month]
         energy_sold_month = [pyo.value(blk.energy_sold_month) for blk in blks_month]
@@ -669,6 +668,13 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     df['Turbine H2 Input [kg]"'] = np.array(h2_turbine_in)
     df['Tank Holdup [kg]'] = np.array(h2_tank_holdup)
     df['Turbine Power Output [MW]'] = np.array(h2_turbine_elec) * 1e-3
+    if input_params['opt_mode'] != 'surrogate':
+        ts_per_month = 8784 // 12
+        n_months = max(len(blks) // ts_per_month, 1)
+        peaker_cumulated_mwh = np.tile(peaker_cumulated_mwh, ts_per_month)
+        avg_revenue_per_mwh = np.tile(avg_revenue_per_mwh, ts_per_month)
+        df['Peaker Revenue [$/MW]'] = np.array(avg_revenue_per_mwh)
+        df['Peaker Power Cumulative [MWh]'] = np.array(peaker_cumulated_mwh)
 
     return design_res, df
 

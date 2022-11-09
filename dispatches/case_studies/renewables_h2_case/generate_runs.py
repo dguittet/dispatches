@@ -27,7 +27,7 @@ reserves = 15
 shortfall = 500
 start_date = '2020-01-01 00:00:00'
 
-n_samples = 4
+n_samples = 1
 h2_prices = np.linspace(0, 3, n_samples)
 batt_kw_costs = np.linspace(300, 900, n_samples)
 batt_kwh_cost_ratios = np.linspace(.2, .4, n_samples)
@@ -41,15 +41,17 @@ print(len(all_runs))
 params = re_h2_parameters.copy()
 params.pop("load")
 params.pop("wind_resource")
+params.pop("wind_load")
 params['wind_gen'] = wind_gen
 params['wind_gen_pmax'] = wind_gen_pmax
+params['start_date'] = start_date
 params['gas_gen'] = gas_gen
 params['reserves'] = reserves
 params['shortfall'] = shortfall
-params['start_date'] = start_date
+params['opt_mode'] = "surrogate"        # comment out to use "meet_load"
 
 
-output_dir = Path(__file__).absolute().parent / f"{len(all_runs)}_results_{317}_{gas_gen[-2:]}_{reserves}_{shortfall}"
+output_dir = Path(__file__).absolute().parent / f"{len(all_runs)}_results_{317}_{gas_gen[-2:]}_{reserves}_{shortfall}_{params['opt_mode']}"
 if not output_dir.exists():
     os.mkdir(output_dir)
 
@@ -117,11 +119,14 @@ reserves = params['reserves']
 shortfall = params['shortfall']
 start_date = params['start_date']
 
-_, wind_capacity_factors, loads_mw, _ = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
+_, wind_capacity_factors, loads_mw, wind_loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
 params["wind_resource"] = wind_capacity_factors
 params["load"] = loads_mw.tolist()
+params["wind_load"] = wind_loads_mw.tolist()
 
-des_res = wind_battery_hydrogen_optimize(n_time_points=8784, input_params=params, verbose=False, plot=False)
+des_res, des_df = wind_battery_hydrogen_optimize(n_time_points=8784, input_params=params, verbose=False, plot=False)
+
+des_df.to_parquet(f"{result_file}.parquet")
 
 params.pop("load")
 params.pop("wind_resource")
