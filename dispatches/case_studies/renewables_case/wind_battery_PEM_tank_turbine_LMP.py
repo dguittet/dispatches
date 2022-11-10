@@ -154,12 +154,10 @@ def initialize_fs(m, tank_type, verbose=False):
         m.fs.h2_tank.outlet_to_turbine.flow_mol[0].fix(value(m.fs.h2_tank.inlet.flow_mol[0]))
         m.fs.h2_tank.outlet_to_pipeline.flow_mol[0].fix(0)
         m.fs.h2_tank.tank_holdup_previous.fix(0)
-        m.fs.h2_tank.tank_throughput_previous.fix(0)
         m.fs.h2_tank.initialize(outlvl=outlvl)
         m.fs.h2_tank.outlet_to_turbine.flow_mol[0].unfix()
         m.fs.h2_tank.outlet_to_pipeline.flow_mol[0].unfix()
         m.fs.h2_tank.tank_holdup_previous.unfix()
-        m.fs.h2_tank.tank_throughput_previous.unfix()
     else:
         m.fs.h2_tank.outlet.flow_mol[0].fix(value(m.fs.h2_tank.inlet.flow_mol[0]))
         m.fs.h2_tank.initialize(outlvl=outlvl)

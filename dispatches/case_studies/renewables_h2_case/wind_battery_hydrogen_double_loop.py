@@ -72,7 +72,6 @@ def transform_design_model_to_operation_model(
         if t == 0:
             b.fs.battery.initial_state_of_charge.fix()
             b.fs.h2_tank.tank_holdup_previous.fix()
-            b.fs.h2_tank.tank_throughput_previous.fix()
             
         b.fs.h2_tank.outlet_to_pipeline.flow_mol.fix(0)
 
@@ -170,8 +169,8 @@ class MultiPeriodWindBatteryHydrogen:
             blk.P_T[t] = (b.fs.splitter.grid_elec[0] + b.fs.battery.elec_out[0] + b.fs.h2_turbine_elec) * 1e-3
             blk.wind_waste[t] = (b.fs.windpower.system_capacity * b.fs.windpower.capacity_factor[0] - b.fs.windpower.electricity[0]) * 1e-3
             # blk.battery_priority[t] = (b.fs.h2_tank.inlet.flow_mol[0] * 3600 / h2_mols_per_kg * self._design_params['turb_conv'] - b.fs.battery.elec_in[0]) * 1e-3
-            # blk.tot_cost[t] = b.op_total_cost + blk.wind_waste_penalty * blk.wind_waste[t] + blk.battery_priority_penalty * blk.battery_priority[t]
-            blk.tot_cost[t] = b.op_total_cost + blk.wind_waste_penalty * blk.wind_waste[t] 
+            # blk.tot_cost[t] = b.var_total_cost + blk.wind_waste_penalty * blk.wind_waste[t] + blk.battery_priority_penalty * blk.battery_priority[t]
+            blk.tot_cost[t] = b.var_total_cost + blk.wind_waste_penalty * blk.wind_waste[t] 
 
         return
 
@@ -199,9 +198,6 @@ class MultiPeriodWindBatteryHydrogen:
 
         new_init_h2_holdup = round(realized_h2_tank_holdup[-1], 2)
         active_blks[0].fs.h2_tank.tank_holdup_previous.fix(new_init_h2_holdup)
-
-        new_init_h2_throughput = round(realized_h2_throughput[-1], 2)
-        active_blks[0].fs.h2_tank.tank_throughput_previous.fix(new_init_h2_throughput)
 
         # shift the time -> update capacity_factor
         time_advance = min(len(realized_soc), 24)

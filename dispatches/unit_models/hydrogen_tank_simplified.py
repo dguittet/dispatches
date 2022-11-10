@@ -184,22 +184,6 @@ see property package for documentation.}""",
                              - blk.properties_out_turbine[t].flow_mol)
             )
         
-        # Total output of tank
-        self.tank_throughput_previous = Var(self.flowsheet().time,
-                                            within=NonNegativeReals,
-                                            units=units("amount"))
-        self.tank_throughput = Var(self.flowsheet().time,
-                                    within=NonNegativeReals,
-                                    units=units("amount"))
-
-        @self.Constraint(self.flowsheet().time)
-        def tank_throughput_accumulation(blk, t):
-            return (
-                blk.tank_throughput[t] - blk.tank_throughput_previous[t] ==
-                blk.dt[t] * (blk.properties_out_pipeline[t].flow_mol
-                             + blk.properties_out_turbine[t].flow_mol)
-            )
-
     def initialize_build(
         blk,
         state_args_in=None,

@@ -69,7 +69,7 @@ def test_populate_model(mp_model):
     mp_model.populate_model(model.fs, 24)
 
     assert pyo.value(model.fs.P_T[0]) == 777.8
-    assert pyo.value(model.fs.tot_cost[0]) == pytest.approx(7439.80, rel=1e-2)
+    assert pyo.value(model.fs.tot_cost[0]) == pytest.approx(0, rel=1e-2)
     assert pyo.value(model.fs.wind_waste[0]) == 0
 
 

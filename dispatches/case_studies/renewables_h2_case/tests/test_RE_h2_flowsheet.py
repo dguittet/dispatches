@@ -56,16 +56,16 @@ def test_wind_battery_optimize(input_params):
 
 def test_wind_battery_hydrogen_optimize(input_params):
     design_res, _ = wind_battery_hydrogen_optimize(int(8760/12), input_params, verbose=False, plot=True)
-    assert design_res['wind_mw'] == pytest.approx(811.57, rel=1e-2)
-    assert design_res['batt_mw'] == pytest.approx(85.82, rel=1e-2)
-    assert design_res['batt_mwh'] == pytest.approx(555.50, rel=1e-2)
+    assert design_res['wind_mw'] == pytest.approx(799.1, rel=1e-2)
+    assert design_res['batt_mw'] == pytest.approx(85.44, rel=1e-2)
+    assert design_res['batt_mwh'] == pytest.approx(259.284, rel=1e-2)
     assert design_res['pem_mw'] == pytest.approx(2, abs=1)
-    assert design_res['tank_tonH2'] == pytest.approx(6.12, abs=2)
-    assert design_res['turb_mw'] == pytest.approx(2.09, abs=1)
+    assert design_res['tank_tonH2'] == pytest.approx(16.7, abs=2)
+    assert design_res['turb_mw'] == pytest.approx(2.56, abs=1)
     assert design_res['annual_under_power'] == pytest.approx(0, abs=1)
     assert design_res['annual_rev_h2'] == pytest.approx(0, abs=1)
-    assert design_res['annual_rev_E'] == pytest.approx(-24303831, rel=1e-2)
-    assert design_res['NPV'] == pytest.approx(-555065942, rel=1e-2)
+    assert design_res['annual_costs_E'] == pytest.approx(28483, rel=1e-2)
+    assert design_res['NPV'] == pytest.approx(-662713110, rel=1e-2)
 
 
 def test_wind_battery_hydrogen_optimize_cheap_hydrogen(input_params):

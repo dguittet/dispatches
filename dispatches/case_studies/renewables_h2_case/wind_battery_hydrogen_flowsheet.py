@@ -34,8 +34,7 @@ def wind_battery_hydrogen_variable_pairs(m1, m2):
         m1: current time block model
         m2: next time block model
     """
-    pairs = [(m1.fs.h2_tank.tank_holdup[0], m2.fs.h2_tank.tank_holdup_previous[0]),
-             (m1.fs.h2_tank.tank_throughput[0], m2.fs.h2_tank.tank_throughput_previous[0])]
+    pairs = [(m1.fs.h2_tank.tank_holdup[0], m2.fs.h2_tank.tank_holdup_previous[0])]
     pairs += [(m1.fs.battery.state_of_charge[0], m2.fs.battery.initial_state_of_charge),
               (m1.fs.battery.energy_throughput[0], m2.fs.battery.initial_energy_throughput),
               (m1.fs.battery.nameplate_power, m2.fs.battery.nameplate_power)]
@@ -106,19 +105,16 @@ def initialize_fs(m, input_params=dict(), verbose=False):
 
     propagate_state(m.fs.pem_to_tank)
 
-    tank_throughput_init = 0
     tank_holdup_init = input_params['turb_mw'] * 1e3 / input_params['turb_conv'] * h2_mols_per_kg
     if 'tank_holdup_init_mols' in input_params.keys():
         tank_holdup_init = input_params['tank_holdup_init_mols']
     m.fs.h2_tank.outlet_to_turbine.flow_mol[0].fix(value(m.fs.h2_tank.inlet.flow_mol[0]))
     m.fs.h2_tank.outlet_to_pipeline.flow_mol[0].fix(0)
     m.fs.h2_tank.tank_holdup_previous.fix(tank_holdup_init)
-    m.fs.h2_tank.tank_throughput_previous.fix(tank_throughput_init)
     m.fs.h2_tank.initialize(outlvl=outlvl)
     m.fs.h2_tank.outlet_to_turbine.flow_mol[0].unfix()
     m.fs.h2_tank.outlet_to_pipeline.flow_mol[0].unfix()
     m.fs.h2_tank.tank_holdup_previous.unfix()
-    m.fs.h2_tank.tank_throughput_previous.unfix()
 
 
 def wind_battery_hydrogen_model(wind_resource_config, input_params, verbose):
@@ -490,7 +486,6 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     m = mp_model.pyomo_model
     blks = mp_model.get_active_process_blocks()
     # blks[0].fs.battery.initial_energy_throughput.fix()
-    blks[0].fs.h2_tank.tank_throughput_previous.fix(0)
     
     size_constraints(mp_model, input_params)
     
@@ -516,8 +511,11 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     if not opt:
         raise RuntimeWarning("No available solvers")
 
-    opt.options['tol'] = 1e-6
-    # opt.options['max_iter'] = 200
+    if solver == 'ipopt':
+        opt.options['tol'] = 1e-6
+        # opt.options['max_iter'] = 200
+        if "tempfile" in input_params.keys():
+            opt.options['output_file'] = input_params['tempfile']
 
     if verbose:
         solve_log = idaeslog.getInitLogger("infeasibility", idaeslog.INFO, tag="properties")
