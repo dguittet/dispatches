@@ -385,21 +385,23 @@ def add_surrogate_obj(mp_model, input_params):
         # Make sure system meets original wind load
         blk.wind_load_power = pyo.Param(default=input_params['wind_load'][i], mutable=True, units=pyo.units.MW)   # convert to kW
         blk.output_power = pyo.Expression(expr=(blk.fs.splitter.grid_elec[0] + blk_battery.elec_out[0] + blk.fs.h2_turbine_elec) * 1e-3)
-        blk.under_power = pyo.Var(domain=pyo.NonNegativeReals, initialize=0, units=pyo.units.MW)        
+        # blk.under_power = pyo.Var(domain=pyo.NonNegativeReals, initialize=0, units=pyo.units.MW)        
         blk.over_power = pyo.Var(domain=pyo.NonNegativeReals, initialize=0, units=pyo.units.MW)
         blk.peaker_power = pyo.Var(domain=pyo.NonNegativeReals, initialize=0, units=pyo.units.MW)
 
-        blk.power_calc = pyo.Constraint(expr=blk.output_power + blk.under_power == blk.wind_load_power + blk.over_power)
+        # blk.power_calc = pyo.Constraint(expr=blk.output_power + blk.under_power == blk.wind_load_power + blk.over_power)
+        blk.power_calc = pyo.Constraint(expr=blk.output_power == blk.wind_load_power + blk.over_power)
         blk.peaker_power_ub_1 = pyo.Constraint(expr=blk.peaker_power <= blk.over_power)
-        blk.peaker_power_ub_2 = pyo.Constraint(expr=blk.peaker_power <= (blk_battery.elec_out[0] + blk.fs.h2_turbine_elec) * 1e-3)
+        blk.peaker_power_ub_2 = pyo.Constraint(expr=blk.peaker_power == (blk_battery.elec_out[0] + blk.fs.h2_turbine_elec) * 1e-3)
+        
+        if abs(value(blk.power_calc)) > 1:
+            wind_kw = input_params['wind_load'][i] * 1e3
+            blk.fs.windpower.electricity[0].set_value(wind_kw)
+            blk.fs.splitter.grid_elec[0].set_value(wind_kw)
+            blk.fs.splitter.electricity[0].set_value(wind_kw)
 
-        # if abs(value(blk.wind_vs_peaker_power)) > 1:
-        #     wind_kw = input_params['wind_load'][i] * 1e3
-        #     blk.fs.windpower.electricity[0].set_value(wind_kw)
-        #     blk.fs.splitter.grid_elec[0].set_value(wind_kw)
-        #     blk.fs.splitter.electricity[0].set_value(wind_kw)
-
-        blk.costs = pyo.Expression(expr=input_params['shortfall_price'] * blk.under_power + blk.var_total_cost)
+        # blk.costs = pyo.Expression(expr=input_params['shortfall_price'] * blk.under_power + blk.var_total_cost)
+        blk.costs = pyo.Expression(expr=blk.var_total_cost)
         blk.hydrogen_revenue = pyo.Expression(expr=m.h2_price_per_kg / h2_mols_per_kg * blk_tank.outlet_to_pipeline.flow_mol[0] * 3600)
 
         # curtailment of wind
@@ -414,14 +416,14 @@ def add_surrogate_obj(mp_model, input_params):
     timestep, timepstep_prev = 0, 0
     for month in range(n_months):
         timepstep_prev = timestep
-        timestep = min(ts_per_month * (month + 1), len(blks)) - 1
+        timestep = min(ts_per_month * (month + 1), len(blks))
         blk = blks[timestep]
         if month == 0:
             blk.dispatch_cf_month = pyo.Expression(expr=m.L / (1 + pyo.exp(-m.k * (month/12 - m.x_0))))
         else:
             blk.dispatch_cf_month = pyo.Expression(expr=m.L / (1 + pyo.exp(-m.k * (month/12 - m.x_0))) - m.L / (1 + pyo.exp(-m.k * ((month - 1)/12 - m.x_0))))
 
-        blk.peaker_mwh_month = pyo.Expression(expr=sum([blks[i].peaker_power for i in range(timepstep_prev + 1, timestep + 1)]))
+        blk.peaker_mwh_month = pyo.Expression(expr=sum([blks[i].peaker_power for i in range(timepstep_prev, timestep)]))
         blk.meet_peaker_CF_dispatch = pyo.Constraint(expr=blk.peaker_mwh_month == blk.dispatch_cf_month * max_hrs * m.PMaxMW)
         blk.avg_revenue_per_mwh = pyo.Expression(expr=(m.A * pyo.exp(-(m.w * month/12 - m.m)**2) + m.y_0))
         blk.revenue = pyo.Expression(expr=blk.dispatch_cf_month * blk.avg_revenue_per_mwh * max_hrs * m.PMaxMW)
@@ -538,8 +540,7 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     
     elec_costs = [pyo.value(blks[i].costs) for i in range(n_time_points)]
     h2_revenue = [pyo.value(blks[i].hydrogen_revenue) for i in range(n_time_points)]
-    under_power = [pyo.value(blks[i].under_power) for i in range(n_time_points)]
-
+    
     hours = np.arange(n_time_points)
 
     wind_cap = value(m.wind_system_capacity + m.wind_add_system_capacity) * 1e-3
@@ -557,7 +558,6 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         "pem_mw": pem_cap,
         "tank_tonH2": tank_size,
         "turb_mw": turb_cap,
-        "annual_under_power": sum(np.round(under_power, 3)) * 52 / n_weeks,
         "annual_rev_h2": sum(h2_revenue) * 52 / n_weeks,
         "annual_costs_E": sum(elec_costs) * 52 / n_weeks,
         "NPV": value(m.NPV),
@@ -578,6 +578,9 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         design_res["avg_revenue_per_mwh"] = sum(avg_revenue_per_mwh) / len(avg_revenue_per_mwh)
         design_res['PMaxMW'] = value(m.PMaxMW)
         design_res['Bid_$/MW'] = value(m.HR_avg) * 3.88722 * 1e-3 # Model fit from NG plants with 3.88722 $/MMBTU 
+    else:
+        under_power = [pyo.value(blks[i].under_power) for i in range(n_time_points)]
+        design_res["annual_under_power"] = sum(np.round(under_power, 3)) * 52 / n_weeks
 
     print(design_res)
 
@@ -651,10 +654,10 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     if input_params['opt_mode'] == 'surrogate':
         df['Peaker Power Output [MW]'] = np.array(peaker_power)
         ts_per_month = n_hrs // 12
-        df['Peaker Sold Power Month [MWh]'] = np.tile(peaker_mwh_month, ts_per_month)
-        df['Peaker Energy Price [$/MWh]'] = np.tile(avg_revenue_per_mwh, ts_per_month)
-        df['Peaker Revenue [$]'] = np.tile(revenue, ts_per_month)
-        df['Peaker Dispatch CF Month [1]'] = np.tile(dispatch_cf_month, ts_per_month)
+        df['Peaker Sold Power Month [MWh]'] = np.repeat(peaker_mwh_month, ts_per_month)
+        df['Peaker Energy Price [$/MWh]'] = np.repeat(avg_revenue_per_mwh, ts_per_month)
+        df['Peaker Revenue [$]'] = np.repeat(revenue, ts_per_month)
+        df['Peaker Dispatch CF Month [1]'] = np.repeat(dispatch_cf_month, ts_per_month)
 
     return design_res, df
 
