@@ -384,7 +384,7 @@ def add_surrogate_obj(mp_model, input_params):
     ts_per_month = len(wind_mw) // 12
     n_months = max(len(blks) // ts_per_month, 1)
     blks_month = []
-    timestep, prev_timestep = 0, 0
+    timestep = 0
 
     # convert everything to MW
     for (i, blk) in enumerate(blks):
@@ -408,11 +408,6 @@ def add_surrogate_obj(mp_model, input_params):
         #     blk.fs.splitter.grid_elec[0].set_value(wind_kw)
         #     blk.fs.splitter.electricity[0].set_value(wind_kw)
 
-        if i == 0:
-            blk.peaker_cumulated_mwh = pyo.Expression(expr=blk.peaker_power)
-        else:
-            blk.peaker_cumulated_mwh = pyo.Expression(expr=blk.peaker_power + blks[i-1].peaker_cumulated_mwh)
-
         blk.costs = pyo.Expression(expr=input_params['shortfall_price'] * blk.under_power + blk.var_total_cost)
         blk.hydrogen_revenue = pyo.Expression(expr=m.h2_price_per_kg / h2_mols_per_kg * blk_tank.outlet_to_pipeline.flow_mol[0] * 3600)
 
@@ -429,10 +424,11 @@ def add_surrogate_obj(mp_model, input_params):
 
     # The cumulative peaker capacity is the battery output, turbine output, and excess wind output
     for month in range(n_months):
-        prev_timestep = timestep
         timestep = min(ts_per_month * (month + 1), len(blks)) - 1
         blk = blks[timestep]
         blk.cf_cumulative_month = pyo.Expression(expr=m.L / (1 + pyo.exp(-m.k * (month/12 - m.x_0))))
+
+        blk.peaker_cumulated_mwh = pyo.Expression(expr=sum([blks[i].peaker_power for i in range(timestep + 1)]))
         blk.meet_peaker_CF_cumulative = pyo.Constraint(expr=blk.peaker_cumulated_mwh >= blk.cf_cumulative_month * max_hrs * m.PMaxMW)
 
         blk.avg_revenue_per_mwh = pyo.Expression(expr=(m.A * pyo.exp(-(m.w * month/12 - m.m)**2) + m.y_0))
@@ -584,11 +580,10 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
 
     if input_params['opt_mode'] == 'surrogate':
         peaker_power = [pyo.value(blks[i].peaker_power) for i in range(n_time_points)]
-        peaker_cumulated_mwh = [pyo.value(blks[i].peaker_cumulated_mwh) for i in range(n_time_points)]
 
         revenue = [pyo.value(blk.revenue) for blk in blks_month]
         cf_sold_month = [pyo.value(blk.cf_sold_month) for blk in blks_month]
-        peaker_cumulated_mwh_month = [pyo.value(blk.peaker_cumulated_mwh) for blk in blks_month]
+        peaker_cumulated_mwh = [pyo.value(blk.peaker_cumulated_mwh) for blk in blks_month]
         avg_revenue_per_mwh = [pyo.value(blk.avg_revenue_per_mwh) for blk in blks_month]
         cf_cumulative_month = [pyo.value(blk.cf_cumulative_month) for blk in blks_month]
 
@@ -641,7 +636,7 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         else:
             # plot peaker energy
             months = range(len(blks_month))
-            axs[2].step(months, peaker_cumulated_mwh_month, label="Total peaker cumulative")
+            axs[2].step(months, peaker_cumulated_mwh, label="Total peaker cumulative")
             axs2 = axs[2].twinx()
             axs2.step(months, avg_revenue_per_mwh, label="Avg Monthly Revenue [$/MWh]", color='k')
             axs2.legend(loc='center right')
