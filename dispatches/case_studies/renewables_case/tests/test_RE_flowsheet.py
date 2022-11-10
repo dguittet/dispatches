@@ -138,7 +138,7 @@ def test_create_model(input_params):
     assert value(m.fs.mixer.air_feed.mole_frac_comp[0, "hydrogen"]) == 2e-4
 
     dof = degrees_of_freedom(m)
-    assert dof == 14
+    assert dof == 13
 
 
 def test_wind_battery_optimize(input_params):
