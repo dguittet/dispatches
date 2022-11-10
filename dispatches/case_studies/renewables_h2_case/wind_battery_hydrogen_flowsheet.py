@@ -411,13 +411,10 @@ def add_surrogate_obj(mp_model, input_params):
         blk.costs = pyo.Expression(expr=input_params['shortfall_price'] * blk.under_power + blk.var_total_cost)
         blk.hydrogen_revenue = pyo.Expression(expr=m.h2_price_per_kg / h2_mols_per_kg * blk_tank.outlet_to_pipeline.flow_mol[0] * 3600)
 
-        if 'modop' in input_params.keys() and input_params['modop']:
-            if wind_mw[i] > input_params['load'][i]:
-                blk.no_batt_discharge = pyo.Constraint(expr=blk_battery.elec_out[0] == 0)
-                blk.no_tank_discharge = pyo.Constraint(expr=blk.fs.h2_turbine_elec == 0)
-            else:
-                blk.no_batt_charge = pyo.Constraint(expr=blk_battery.elec_in[0] == 0)
-                blk.no_tank_charge = pyo.Constraint(expr=blk.fs.pem.electricity[0] == 0)
+        # curtailment of wind
+        if wind_mw[i] > value(blk.wind_load_power):
+            blk.no_batt_discharge = pyo.Constraint(expr=blk_battery.elec_out[0] == 0)
+            blk.no_tank_discharge = pyo.Constraint(expr=blk.fs.h2_turbine_elec == 0)
 
         blk.min_storage_soc = pyo.Constraint(expr=(blk_battery.state_of_charge[0]
                                                     + blk_tank.tank_holdup[0] / h2_mols_per_kg * input_params['turb_conv']) * 1e-3 >= m.PMaxMW)
@@ -588,7 +585,7 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         cf_cumulative_month = [pyo.value(blk.cf_cumulative_month) for blk in blks_month]
 
         design_res["annual_rev_E"] = sum(revenue) * 8784 / n_time_points
-        design_res["annual_sold_E"] = sum(cf_sold_month) * 8784 / n_time_points * value(m.PMaxMW)
+        design_res["annual_sold_E"] = sum(cf_sold_month) * 8784 * value(m.PMaxMW)
         design_res["avg_revenue_per_mwh"] = sum(avg_revenue_per_mwh) / len(avg_revenue_per_mwh)
         design_res['PMaxMW'] = value(m.PMaxMW)
         design_res['Bid_$/MW'] = value(m.HR_avg) * 3.88722 * 1e-3 # Model fit from NG plants with 3.88722 $/MMBTU 
@@ -665,12 +662,12 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     df['Turbine Power Output [MW]'] = np.array(h2_turbine_elec) * 1e-3
     df['Peaker Power Output [MW]'] = np.array(peaker_power) * 1e-3
     if input_params['opt_mode'] == 'surrogate':
-        df["Peaker Power [MW]"] = peaker_power
         ts_per_month = 8784 // 12
-        df['Peaker Energy Price [$/MWh]'] = np.tile(avg_revenue_per_mwh, ts_per_month)
-        df['Peaker CF Sold [1]'] = np.tile(cf_sold_month, ts_per_month)
-        df['Peaker Revenue [$]'] = np.tile(revenue, ts_per_month)
+        df['Peaker Power Sold Cumulative [MWh]'] = np.tile(cf_sold_month, ts_per_month) * n_hrs * value(m.PMaxMW)
         df['Peaker Delivered Power Cumulative [MWh]'] = np.tile(peaker_cumulated_mwh, ts_per_month)
+        df['Peaker Energy Price [$/MWh]'] = np.tile(avg_revenue_per_mwh, ts_per_month)
+        df['Peaker Revenue [$]'] = np.tile(revenue, ts_per_month)
+        df['Peaker CF Sold [1]'] = np.tile(cf_sold_month, ts_per_month)
         df['Peaker Dispatch CF Cumulative [1]'] = np.tile(cf_cumulative_month, ts_per_month)
 
     return design_res, df
