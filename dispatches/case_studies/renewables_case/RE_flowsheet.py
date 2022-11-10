@@ -419,8 +419,9 @@ def create_model(wind_mw, pem_bar, batt_mw, tank_type, tank_length_m, turb_inlet
     TransformationFactory("network.expand_arcs").apply_to(m)
 
     # Scaling factors, set mostly to 1 for now
-    elec_sf = 1
+    elec_sf = 1e-3
     iscale.set_scaling_factor(m.fs.windpower.electricity, elec_sf)
+    iscale.set_scaling_factor(m.fs.windpower.system_capacity, elec_sf)
     if hasattr(m.fs, "splitter"):
         iscale.set_scaling_factor(m.fs.splitter.electricity, elec_sf)
         iscale.set_scaling_factor(m.fs.splitter.grid_elec, elec_sf)
@@ -433,11 +434,16 @@ def create_model(wind_mw, pem_bar, batt_mw, tank_type, tank_length_m, turb_inlet
         iscale.set_scaling_factor(m.fs.battery.nameplate_energy, elec_sf)
         iscale.set_scaling_factor(m.fs.battery.initial_state_of_charge, elec_sf)
         iscale.set_scaling_factor(m.fs.battery.initial_energy_throughput, elec_sf)
+        iscale.set_scaling_factor(m.fs.battery.energy_throughput, elec_sf)
         iscale.set_scaling_factor(m.fs.battery.state_of_charge, elec_sf)
 
     if hasattr(m.fs, "pem"):
         iscale.set_scaling_factor(m.fs.splitter.pem_elec, elec_sf)
         iscale.set_scaling_factor(m.fs.pem.electricity, elec_sf)
+
+    if hasattr(m.fs, "h2_tank"):
+        iscale.set_scaling_factor(m.fs.h2_tank.tank_holdup_previous, elec_sf)
+        iscale.set_scaling_factor(m.fs.h2_tank.tank_holdup, elec_sf)
 
     if hasattr(m.fs, "h2_turbine"):
         iscale.set_scaling_factor(m.fs.mixer.minimum_pressure, 1)
