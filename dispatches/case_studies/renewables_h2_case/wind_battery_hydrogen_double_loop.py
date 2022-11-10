@@ -21,7 +21,7 @@ from dispatches.case_studies.renewables_h2_case.re_h2_parameters import h2_mols_
 from dispatches.case_studies.renewables_h2_case.wind_battery_hydrogen_flowsheet import (
     wind_battery_hydrogen_mp_block,
     size_constraints,
-    calculate_operating_costs,
+    calculate_variable_costs,
     wind_battery_hydrogen_variable_pairs,
     wind_battery_hydrogen_periodic_variable_pairs
 )
@@ -52,7 +52,7 @@ def create_multiperiod_wind_battery_hydrogen_model(n_time_points, wind_capacity_
 
     mp_wind_battery_hydrogen.build_multi_period_model(input_params['wind_resource'])
     size_constraints(mp_wind_battery_hydrogen, input_params)
-    calculate_operating_costs(mp_wind_battery_hydrogen, input_params)
+    calculate_variable_costs(mp_wind_battery_hydrogen, input_params)
 
     return mp_wind_battery_hydrogen
 
