@@ -393,7 +393,7 @@ def add_surrogate_obj(mp_model, input_params):
         blk.power_calc = pyo.Constraint(expr=blk.output_power == blk.wind_load_power + blk.over_power)
         blk.peaker_power_ub_1 = pyo.Constraint(expr=blk.peaker_power <= blk.over_power)
         blk.peaker_power_ub_2 = pyo.Constraint(expr=blk.peaker_power == (blk_battery.elec_out[0] + blk.fs.h2_turbine_elec) * 1e-3)
-        
+
         if abs(value(blk.power_calc)) > 1:
             wind_kw = input_params['wind_load'][i] * 1e3
             blk.fs.windpower.electricity[0].set_value(wind_kw)
@@ -416,7 +416,7 @@ def add_surrogate_obj(mp_model, input_params):
     timestep, timepstep_prev = 0, 0
     for month in range(n_months):
         timepstep_prev = timestep
-        timestep = min(ts_per_month * (month + 1), len(blks))
+        timestep = min(ts_per_month * (month + 1), len(blks) - 1)
         blk = blks[timestep]
         if month == 0:
             blk.dispatch_cf_month = pyo.Expression(expr=m.L / (1 + pyo.exp(-m.k * (month/12 - m.x_0))))
@@ -635,7 +635,7 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         axs[2].grid(visible=True, which='minor', color='k', linestyle='--', alpha=0.2)
         fig.tight_layout()
 
-    plt.show()
+        plt.show()
 
     df = pd.DataFrame(index=range(n_time_points))
     df['Total Wind Generation [MW]'] = np.array(wind_gen) * 1e-3
@@ -668,11 +668,14 @@ if __name__ == "__main__":
     re_h2_parameters["turbine_cap_cost"] *= 0.1
     # re_h2_parameters["batt_cap_cost_kw"] *= 0.1
     # re_h2_parameters["batt_cap_cost_kwh"] *= 0.1
-    re_h2_parameters["batt_mw"] = 0
-    re_h2_parameters["batt_mwh"] = 0
-    re_h2_parameters["turb_mw"] = 0
+    re_h2_parameters["batt_mw"] = 20
+    re_h2_parameters["batt_mwh"] = 100
+    re_h2_parameters["turb_mw"] = 20
     re_h2_parameters['opt_mode'] = "surrogate"
+
+    # re_h2_parameters["design_opt"] = False
+
     re_h2_parameters["tank_size"] = re_h2_parameters['turb_mw'] * 1e3 / re_h2_parameters['turb_conv']
-    des_res, df_res = wind_battery_hydrogen_optimize(n_time_points=int(8784/2), input_params=re_h2_parameters, verbose=False, plot=False)
+    des_res, df_res = wind_battery_hydrogen_optimize(n_time_points=int(8784/12 * 12), input_params=re_h2_parameters, verbose=False, plot=False)
     df_res.to_parquet(re_h2_dir / "design_results.parquet")
     print(des_res)

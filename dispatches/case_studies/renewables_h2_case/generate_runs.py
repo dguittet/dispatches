@@ -27,14 +27,15 @@ reserves = 15
 shortfall = 500
 start_date = '2020-01-01 00:00:00'
 
-n_samples = 1
-h2_prices = np.linspace(0, 3, n_samples)
-batt_kw_costs = np.linspace(300, 900, n_samples)
-batt_kwh_cost_ratios = np.linspace(.2, .4, n_samples)
-pem_cap_costs = np.linspace(1200, 2000, n_samples)
-tank_cap_costs = np.linspace(375, 625, n_samples)
-turbine_cap_costs = np.linspace(750, 1250, n_samples)
-turb_conv_rates = np.linspace(10, 25, n_samples)
+n_samples = 4
+middle_slice = slice(1, 3)
+h2_prices = np.linspace(0, 3, n_samples)[middle_slice]
+batt_kw_costs = np.linspace(300, 900, n_samples)[middle_slice]
+batt_kwh_cost_ratios = np.linspace(.2, .4, n_samples)[middle_slice]
+pem_cap_costs = np.linspace(1200, 2000, n_samples)[middle_slice]
+tank_cap_costs = np.linspace(375, 625, n_samples)[middle_slice]
+turbine_cap_costs = np.linspace(750, 1250, n_samples)[middle_slice]
+turb_conv_rates = np.linspace(10, 25, n_samples)[middle_slice]
 
 all_runs = list(product(h2_prices, batt_kw_costs, batt_kwh_cost_ratios, pem_cap_costs, tank_cap_costs, turbine_cap_costs, turb_conv_rates))
 print(len(all_runs))
@@ -145,8 +146,10 @@ job_prefix = "job"
 
 [hpc]
 account = "gmihybridsys"
-partition = "short"
-walltime = "4:00:00"
+partition = "standard"
+walltime = "48:00:00"
+mem = "150G"
+tmp = "800GB"
 
 #--per-node-batch-size=108 
 """
