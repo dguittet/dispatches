@@ -15,18 +15,15 @@
 from prescient.simulator import Prescient
 from types import ModuleType
 from argparse import ArgumentParser
-from wind import MultiPeriodWindBattery
-import idaes
+from wind_battery_hydrogen_double_loop import MultiPeriodWindBatteryHydrogen
+from re_h2_parameters import *
+from parametrized_bidder import FixedParametrizedBidder, PerfectForecaster
 from idaes.apps.grid_integration import (
     Tracker,
-    DoubleLoopCoordinator,
-    SelfScheduler,
+    DoubleLoopCoordinator
 )
 from idaes.apps.grid_integration.forecaster import Backcaster
-from idaes.apps.grid_integration.model_data import (
-    RenewableGeneratorModelData,
-    ThermalGeneratorModelData,
-)
+from idaes.apps.grid_integration.model_data import ThermalGeneratorModelData
 import pyomo.environ as pyo
 from pyomo.common.fileutils import this_file_dir
 import pandas as pd
@@ -54,7 +51,7 @@ parser.add_argument(
     help="Set wind capacity in MW.",
     action="store",
     type=float,
-    default=200.0,
+    default=wind_gen_pmax,
 )
 
 parser.add_argument(
@@ -76,12 +73,12 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--n_scenario",
-    dest="n_scenario",
-    help="Set the number of price scenarios.",
+    "--storage_bid",
+    dest="storage_bid",
+    help="Set the storage bid price in $/MW.",
     action="store",
-    type=int,
-    default=3,
+    type=float,
+    default=50.0,
 )
 
 parser.add_argument(
@@ -90,16 +87,7 @@ parser.add_argument(
     help="Set the reserve factor.",
     action="store",
     type=float,
-    default=0.0,
-)
-
-parser.add_argument(
-    "--participation_mode",
-    dest="participation_mode",
-    help="Indicate the market participation mode.",
-    action="store",
-    type=str,
-    default="Bid",
+    default=reserves * 1e-2,
 )
 
 options = parser.parse_args()
@@ -108,119 +96,59 @@ sim_id = options.sim_id
 wind_pmax = options.wind_pmax
 battery_energy_capacity = options.battery_energy_capacity
 battery_pmax = options.battery_pmax
-n_scenario = options.n_scenario
-participation_mode = options.participation_mode
+storage_bid = options.storage_bid
 reserve_factor = options.reserve_factor
 
-allowed_participation_modes = {"Bid", "SelfSchedule"}
-if participation_mode not in allowed_participation_modes:
-    raise ValueError(
-        f"The provided participation mode {participation_mode} is not supported."
-    )
+battery_pmax = 6
+battery_energy_capacity = 106
+turb_p_mw = 0.14
+wind_pmax = 800.6
+storage_bid = 96.25
 
+hybrid_pmax = wind_pmax + battery_pmax + turb_p_mw
 p_min = 0
-default_wind_bus = 309
-bus_name = "Carter"
-wind_generator = "309_WIND_1"
-start_date = "01-02-2020"
+default_wind_bus = 317
+bus_name = "Chuhsi"
+wind_generator = "317_WIND_1"
+start_date = "01-01-2020"
+input_params = re_h2_parameters.copy()
+input_params['batt_mw'] = battery_pmax
+input_params['batt_mwh'] = battery_energy_capacity
+input_params['batt_hr'] = battery_energy_capacity / battery_pmax
+input_params['wind_mw'] = wind_pmax
+input_params['tank_size'] = 0.4044 / kg_to_tons
+input_params['pem_mw'] = 0.26
+input_params['turb_mw'] = turb_p_mw
+input_params['turb_conv'] = 15
+input_params['h2_price_per_kg'] = 1
 
-prescient_outputs_df = pd.read_csv(this_file_path / "data" / "Wind_Thermal_Dispatch.csv")
-prescient_outputs_df.index = pd.to_datetime(prescient_outputs_df['Unnamed: 0'])
-prescient_outputs_df = prescient_outputs_df[prescient_outputs_df.index >= pd.Timestamp(f'{start_date} 00:00:00')]
-gen_capacity_factor = prescient_outputs_df[f"{wind_generator}-RTCF"].values.tolist()
+wind_cfs, wind_resource, loads_mw, wind_loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
 
 # NOTE: `rts_gmlc_data_dir` should point to a directory containing RTS-GMLC scenarios
 rts_gmlc_data_dir = rts_gmlc.source_data_path
-output_dir = Path(f"sim_{sim_id}_results")
+output_dir = Path(f"double_loop_parametrized_rdc_results")
 
 solver = pyo.SolverFactory("xpress_direct")
 
-if participation_mode == "Bid":
-    thermal_generator_params = {
-        "gen_name": wind_generator,
-        "bus": bus_name,
-        "p_min": p_min,
-        "p_max": wind_pmax,
-        "min_down_time": 0,
-        "min_up_time": 0,
-        "ramp_up_60min": wind_pmax + battery_pmax,
-        "ramp_down_60min": wind_pmax + battery_pmax,
-        "shutdown_capacity": wind_pmax + battery_pmax,
-        "startup_capacity": 0,
-        "initial_status": 1,
-        "initial_p_output": 0,
-        "production_cost_bid_pairs": [(p_min, 0), (wind_pmax, 0)],
-        "startup_cost_pairs": [(0, 0)],
-        "fixed_commitment": None,
-    }
-    model_data = ThermalGeneratorModelData(**thermal_generator_params)
-elif participation_mode == "SelfSchedule":
-    generator_params = {
-        "gen_name": wind_generator,
-        "bus": bus_name,
-        "p_min": p_min,
-        "p_max": wind_pmax,
-        "p_cost": 0,
-        "fixed_commitment": None,
-    }
-    model_data = RenewableGeneratorModelData(**generator_params)
+thermal_generator_params = {
+    "gen_name": wind_generator,
+    "bus": bus_name,
+    "p_min": p_min,
+    "p_max": hybrid_pmax,
+    "min_down_time": 0,
+    "min_up_time": 0,
+    "ramp_up_60min": hybrid_pmax,
+    "ramp_down_60min": hybrid_pmax,
+    "shutdown_capacity": hybrid_pmax,
+    "startup_capacity": hybrid_pmax,
+    "initial_status": 1,
+    "initial_p_output": 0,
+    "production_cost_bid_pairs": [(p_min, 0), (hybrid_pmax, 0)],
+    "startup_cost_pairs": [(0, 0)],
+    "fixed_commitment": None,
+}
+model_data = ThermalGeneratorModelData(**thermal_generator_params)
 
-historical_da_prices = {
-    bus_name: [
-        19.983547,
-        0.0,
-        0.0,
-        19.983547,
-        21.647258,
-        21.647258,
-        33.946708,
-        21.647258,
-        0.0,
-        0.0,
-        19.983547,
-        20.846138,
-        20.419098,
-        21.116411,
-        21.116411,
-        21.843654,
-        33.752662,
-        27.274616,
-        27.274616,
-        26.324557,
-        23.128644,
-        21.288154,
-        21.116714,
-        21.116714,
-    ]
-}
-historical_rt_prices = {
-    bus_name: [
-        30.729141,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        32.451804,
-        34.888412,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        19.983547,
-        21.116411,
-        19.034775,
-        16.970947,
-        20.419098,
-        26.657418,
-        25.9087,
-        24.617414,
-        24.617414,
-        22.492854,
-        10000.0,
-        23.437807,
-    ]
-}
 
 ################################################################################
 ################################# bidder #######################################
@@ -228,34 +156,24 @@ historical_rt_prices = {
 day_ahead_horizon = 48
 real_time_horizon = 4
 
-mp_wind_battery_bid = MultiPeriodWindBattery(
+forecaster = PerfectForecaster(re_h2_dir / "data" / "Wind_Thermal_Gen.csv")
+
+mp_wind_battery_bid = MultiPeriodWindBatteryHydrogen(
     model_data=model_data,
-    wind_capacity_factors=gen_capacity_factor,
-    wind_pmax_mw=wind_pmax,
-    battery_pmax_mw=battery_pmax,
-    battery_energy_capacity_mwh=battery_energy_capacity,
+    wind_capacity_factors=wind_cfs,
+    input_params=input_params
 )
 
-backcaster = Backcaster(historical_da_prices, historical_rt_prices)
-
-if participation_mode == "Bid":
-    bidder_object = Bidder(
-        bidding_model_object=mp_wind_battery_bid,
-        day_ahead_horizon=day_ahead_horizon,
-        real_time_horizon=real_time_horizon,
-        n_scenario=n_scenario,
-        solver=solver,
-        forecaster=backcaster,
-    )
-elif participation_mode == "SelfSchedule":
-    bidder_object = SelfScheduler(
-        bidding_model_object=mp_wind_battery_bid,
-        day_ahead_horizon=day_ahead_horizon,
-        real_time_horizon=real_time_horizon,
-        n_scenario=n_scenario,
-        solver=solver,
-        forecaster=backcaster,
-    )
+bidder_object = FixedParametrizedBidder(
+    bidding_model_object=mp_wind_battery_bid,
+    day_ahead_horizon=day_ahead_horizon,
+    real_time_horizon=real_time_horizon,
+    n_scenario=1,
+    solver=solver,
+    forecaster=forecaster,
+    storage_marginal_cost=storage_bid,
+    storage_mw=battery_pmax + turb_p_mw
+)
 
 ################################################################################
 ################################# Tracker ######################################
@@ -264,12 +182,10 @@ elif participation_mode == "SelfSchedule":
 tracking_horizon = 4
 n_tracking_hour = 1
 
-mp_wind_battery_track = MultiPeriodWindBattery(
+mp_wind_battery_track = MultiPeriodWindBatteryHydrogen(
     model_data=model_data,
-    wind_capacity_factors=gen_capacity_factor,
-    wind_pmax_mw=wind_pmax,
-    battery_pmax_mw=battery_pmax,
-    battery_energy_capacity_mwh=battery_energy_capacity,
+    wind_capacity_factors=wind_cfs,
+    input_params=input_params
 )
 
 # create a `Tracker` using`mp_wind_battery`
@@ -280,12 +196,10 @@ tracker_object = Tracker(
     solver=solver,
 )
 
-mp_wind_battery_track_project = MultiPeriodWindBattery(
+mp_wind_battery_track_project = MultiPeriodWindBatteryHydrogen(
     model_data=model_data,
-    wind_capacity_factors=gen_capacity_factor,
-    wind_pmax_mw=wind_pmax,
-    battery_pmax_mw=battery_pmax,
-    battery_energy_capacity_mwh=battery_energy_capacity,
+    wind_capacity_factors=wind_cfs,
+    input_params=input_params
 )
 
 # create a `Tracker` using`mp_wind_battery`
@@ -324,21 +238,31 @@ prescient_options = {
     "simulate_out_of_sample": True,
     "run_sced_with_persistent_forecast_errors": True,
     "output_directory": output_dir,
+    "monitor_all_contingencies":False,
     "start_date": start_date,
     "num_days": 364,
-    "sced_horizon": 4,
-    "ruc_horizon": 48,
+    "sced_horizon": 1,
+    "ruc_horizon": 36,
     "compute_market_settlements": True,
-    "day_ahead_pricing": "LMP",
-    "ruc_mipgap": 0.05,
+    "day_ahead_pricing": "aCHP",
+    "ruc_mipgap": 0.01,
     "symbolic_solver_labels": True,
     "reserve_factor": reserve_factor,
-    "deterministic_ruc_solver": "xpress_direct",
-    "sced_solver": "xpress_direct",
+    "price_threshold": shortfall,
+    "transmission_price_threshold": shortfall / 2,
+    "reserve_price_threshold": shortfall / 10,
+    # "deterministic_ruc_solver": "xpress_direct",
+    "deterministic_ruc_solver": "xpress_persistent",
+    "deterministic_ruc_solver_options" : {"threads":2, "heurstrategy":2, "cutstrategy":3, "symmetry":2, "maxnode":1000},
+    "sced_solver": "xpress_persistent",
+    "enforce_sced_shutdown_ramprate":False,
+    "ruc_slack_type":"ref-bus-and-branches",
+    "sced_slack_type":"ref-bus-and-branches",
+    "disable_stackgraphs":True,
     "plugin": {
         "doubleloop": {
             "module": plugin_module,
-            "bidding_generator": "309_WIND_1",
+            "bidding_generator": wind_generator,
         }
     },
 }
@@ -346,5 +270,5 @@ prescient_options = {
 Prescient().simulate(**prescient_options)
 
 # write options into the result folder
-with open(output_dir / "sim_options.txt", "w") as f:
-    f.write(str(options))
+with open(output_dir / "sim_options.json", "w") as f:
+    f.write(str(input_params))

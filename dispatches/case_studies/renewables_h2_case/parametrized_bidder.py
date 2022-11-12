@@ -15,13 +15,10 @@
 from idaes.apps.grid_integration.bidder import *
 from idaes.apps.grid_integration.forecaster import AbstractPrescientPriceForecaster
 
-class FileForecaster(AbstractPrescientPriceForecaster):
+class PerfectForecaster(AbstractPrescientPriceForecaster):
 
     def __init__(self, file_path):
-        self.data = pd.read_csv(file_path)
-        self.data["DateTime"] = self.data['Unnamed: 0']
-        self.data.drop('Unnamed: 0', inplace=True, axis=1)
-        self.data.index = pd.to_datetime(self.data["DateTime"])
+        self.data = pd.read_csv(file_path, index_col="Datetime", parse_dates=True)
 
     def __getitem__(self, index):
         return self.data[index]
@@ -80,7 +77,8 @@ class ParametrizedBidder(StochasticProgramBidder):
                          real_time_horizon,
                          n_scenario,
                          solver,
-                         forecaster)
+                         forecaster,
+                         real_time_underbid_penalty=500)
         self.battery_marginal_cost = 25
         self.battery_capacity_ratio = 0.4
 
@@ -291,7 +289,7 @@ class FixedParametrizedBidder(ParametrizedBidder):
                          solver,
                          forecaster)
         self.wind_marginal_cost = 0
-        self.wind_mw = self.bidding_model_object._wind_pmax_mw
+        self.wind_mw = self.bidding_model_object._design_params['wind_mw']
         self.storage_marginal_cost = storage_marginal_cost
         self.storage_mw = storage_mw
 
@@ -303,14 +301,29 @@ class FixedParametrizedBidder(ParametrizedBidder):
 
         for t_idx in range(self.day_ahead_horizon):
             da_wind = forecast[t_idx] * self.wind_mw
-            bids = [(da_wind, 0), (da_wind + self.storage_mw, self.storage_marginal_cost)]
+            bids = [(0, 0), (da_wind, 0), (da_wind + self.storage_mw, self.storage_marginal_cost)]
+            cost_curve = convert_marginal_costs_to_actual_costs(bids)
+
+            temp_curve = {
+                    "data_type": "cost_curve",
+                    "cost_curve_type": "piecewise",
+                    "values": cost_curve,
+            }
+            tx_utils.validate_and_clean_cost_curve(
+                curve=temp_curve,
+                curve_type="cost_curve",
+                p_min=0,
+                p_max=max([p[0] for p in cost_curve]),
+                gen_name=gen,
+                t=t_idx,
+            )
 
             t = t_idx + hour
             full_bids[t] = {}
             full_bids[t][gen] = {}
-            full_bids[t][gen]["p_cost"] = convert_marginal_costs_to_actual_costs(bids)
+            full_bids[t][gen]["p_cost"] = cost_curve
             full_bids[t][gen]["p_min"] = 0
-            full_bids[t][gen]["p_max"] = rt_wind + self.storage_mw
+            full_bids[t][gen]["p_max"] = da_wind + self.storage_mw
             full_bids[t][gen]["startup_capacity"] = 0
             full_bids[t][gen]["shutdown_capacity"] = 0
 
@@ -318,7 +331,7 @@ class FixedParametrizedBidder(ParametrizedBidder):
         return full_bids
 
     def compute_real_time_bids(
-        self, date, hour, realized_day_ahead_prices, realized_day_ahead_dispatches, tracker_profile
+        self, date, hour, realized_day_ahead_prices, realized_day_ahead_dispatches
     ):
         gen = self.generator
         forecast = self.forecaster.forecast_real_time_capacity_factor(date, hour, gen, self.day_ahead_horizon)
@@ -327,7 +340,7 @@ class FixedParametrizedBidder(ParametrizedBidder):
 
         for t_idx in range(self.real_time_horizon):
             rt_wind = forecast[t_idx] * self.wind_mw
-            bids = [(rt_wind, 0), (rt_wind + self.storage_mw, self.storage_marginal_cost)]
+            bids = [(0, 0), (rt_wind, 0), (rt_wind + self.storage_mw, self.storage_marginal_cost)]
 
             t = t_idx + hour
             full_bids[t] = {}
