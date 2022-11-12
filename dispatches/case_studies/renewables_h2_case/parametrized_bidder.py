@@ -98,10 +98,12 @@ class ParametrizedBidder(StochasticProgramBidder):
             power = wind_forecast_energy[t_idx] * (1.0 - self.battery_capacity_ratio)
             max_power = wind_forecast_energy[t_idx]
             t = t_idx + hour
+            bids = [(power, 0), (max_power, self.battery_marginal_cost)]
+            bid_curve = convert_marginal_costs_to_actual_costs(bids)
 
             full_bids[t] = {}
             full_bids[t][gen] = {}
-            full_bids[t][gen]["p_cost"] = [(power, 0), (max_power, self.battery_marginal_cost)]
+            full_bids[t][gen]["p_cost"] = bid_curve
             full_bids[t][gen]["p_min"] = power
             full_bids[t][gen]["p_max"] = power
             full_bids[t][gen]["startup_capacity"] = power
@@ -250,7 +252,8 @@ class VaryingParametrizedBidder(ParametrizedBidder):
             full_bids[t] = {}
             full_bids[t][gen] = {}
             if power > realized_day_ahead_dispatches[t % 24]:
-                full_bids[t][gen]["p_cost"] = [(realized_day_ahead_dispatches[t % 24], 0), (power, rt_price[t_idx])]
+                bids = [(realized_day_ahead_dispatches[t % 24], 0), (power, rt_price[t_idx])]
+                full_bids[t][gen]["p_cost"] = convert_marginal_costs_to_actual_costs(bids)
                 p_min = realized_day_ahead_dispatches[t % 24]
             else:
                 full_bids[t][gen]["p_cost"] = [(power, 0)]
@@ -259,6 +262,81 @@ class VaryingParametrizedBidder(ParametrizedBidder):
             full_bids[t][gen]["p_max"] = power
             full_bids[t][gen]["startup_capacity"] = p_min
             full_bids[t][gen]["shutdown_capacity"] = p_min
+
+        self._record_bids(full_bids, date, hour, Market="Real-time")
+        return full_bids
+
+
+class FixedParametrizedBidder(ParametrizedBidder):
+
+    """
+    Template class for bidders that use fixed parameters.
+    """
+
+    def __init__(
+        self,
+        bidding_model_object,
+        day_ahead_horizon,
+        real_time_horizon,
+        n_scenario,
+        solver,
+        forecaster,
+        storage_marginal_cost,
+        storage_mw
+    ):
+        super().__init__(bidding_model_object,
+                         day_ahead_horizon,
+                         real_time_horizon,
+                         n_scenario,
+                         solver,
+                         forecaster)
+        self.wind_marginal_cost = 0
+        self.wind_mw = self.bidding_model_object._wind_pmax_mw
+        self.storage_marginal_cost = storage_marginal_cost
+        self.storage_mw = storage_mw
+
+    def compute_day_ahead_bids(self, date, hour=0):
+        gen = self.generator
+        forecast = self.forecaster.forecast_day_ahead_capacity_factor(date, hour, gen, self.day_ahead_horizon)
+
+        full_bids = {}
+
+        for t_idx in range(self.day_ahead_horizon):
+            da_wind = forecast[t_idx] * self.wind_mw
+            bids = [(da_wind, 0), (da_wind + self.storage_mw, self.storage_marginal_cost)]
+
+            t = t_idx + hour
+            full_bids[t] = {}
+            full_bids[t][gen] = {}
+            full_bids[t][gen]["p_cost"] = convert_marginal_costs_to_actual_costs(bids)
+            full_bids[t][gen]["p_min"] = 0
+            full_bids[t][gen]["p_max"] = rt_wind + self.storage_mw
+            full_bids[t][gen]["startup_capacity"] = 0
+            full_bids[t][gen]["shutdown_capacity"] = 0
+
+        self._record_bids(full_bids, date, hour, Market="Day-ahead")
+        return full_bids
+
+    def compute_real_time_bids(
+        self, date, hour, realized_day_ahead_prices, realized_day_ahead_dispatches, tracker_profile
+    ):
+        gen = self.generator
+        forecast = self.forecaster.forecast_real_time_capacity_factor(date, hour, gen, self.day_ahead_horizon)
+        
+        full_bids = {}
+
+        for t_idx in range(self.real_time_horizon):
+            rt_wind = forecast[t_idx] * self.wind_mw
+            bids = [(rt_wind, 0), (rt_wind + self.storage_mw, self.storage_marginal_cost)]
+
+            t = t_idx + hour
+            full_bids[t] = {}
+            full_bids[t][gen] = {}
+            full_bids[t][gen]["p_cost"] = convert_marginal_costs_to_actual_costs(bids)
+            full_bids[t][gen]["p_min"] = 0
+            full_bids[t][gen]["p_max"] = rt_wind + self.storage_mw
+            full_bids[t][gen]["startup_capacity"] = 0
+            full_bids[t][gen]["shutdown_capacity"] = 0
 
         self._record_bids(full_bids, date, hour, Market="Real-time")
         return full_bids
