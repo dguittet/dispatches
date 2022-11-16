@@ -171,6 +171,8 @@ class MultiPeriodWindBatteryHydrogen:
             # blk.battery_priority[t] = (b.fs.h2_tank.inlet.flow_mol[0] * 3600 / h2_mols_per_kg * self._design_params['turb_conv'] - b.fs.battery.elec_in[0]) * 1e-3
             # blk.tot_cost[t] = b.var_total_cost + blk.wind_waste_penalty * blk.wind_waste[t] + blk.battery_priority_penalty * blk.battery_priority[t]
             blk.tot_cost[t] = b.var_total_cost + blk.wind_waste_penalty * blk.wind_waste[t] 
+            # disable selling hydrogen for now
+            b.fs.h2_tank.outlet_to_pipeline.flow_mol.fix(0)
 
         return
 

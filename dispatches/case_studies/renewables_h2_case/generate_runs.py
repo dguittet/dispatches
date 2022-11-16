@@ -108,7 +108,9 @@ if os.environ.get("SLURMD_NODENAME"):
 
 params_file = Path(sys.argv[1])
 run_id = params_file.stem.split("_")[1]
-result_filename = params_file.parent / f"results_{run_id}"
+result_filename = params_file.parent / f"results3_{run_id}"
+if (result_filename / ".json").exists():
+    exit()
 
 with open(params_file, 'r') as f:
     params = json.load(f)
@@ -125,12 +127,17 @@ params["wind_resource"] = wind_capacity_factors
 params["load"] = loads_mw.tolist()
 params["wind_load"] = wind_loads_mw.tolist()
 params['tempfile'] = str(result_filename) + ".ipopt"
+params["batt_mw"] = 0
+params["batt_mwh"] = 0
+params["turb_mw"] = 0
+params["tank_size"] = params['turb_mw'] * 1e3 / params['turb_conv']
 
 des_res, des_df = wind_battery_hydrogen_optimize(n_time_points=8784, input_params=params, verbose=False, plot=False)
 
 des_df.to_parquet(str(result_filename) + ".parquet")
 
 params.pop("load")
+params.pop("wind_load")
 params.pop("wind_resource")
 params.pop("pyo_model")
 

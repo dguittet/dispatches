@@ -441,7 +441,7 @@ def create_model(wind_mw, pem_bar, batt_mw, tank_type, tank_length_m, turb_inlet
         iscale.set_scaling_factor(m.fs.splitter.pem_elec, elec_sf)
         iscale.set_scaling_factor(m.fs.pem.electricity, elec_sf)
 
-    if hasattr(m.fs, "h2_tank"):
+    if hasattr(m.fs, "h2_tank") and hasattr(m.fs.h2_tank, "tank_holdup"):
         iscale.set_scaling_factor(m.fs.h2_tank.tank_holdup_previous, elec_sf)
         iscale.set_scaling_factor(m.fs.h2_tank.tank_holdup, elec_sf)
 
