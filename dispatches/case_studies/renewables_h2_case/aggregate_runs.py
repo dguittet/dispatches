@@ -40,6 +40,10 @@ res_records = []
 for res_file in glob.glob(str(run_dir / "result*.json")):
     with open(res_file, 'r') as f:
         res = json.load(f)
+        if "wind_load" in res.keys():
+            res.pop("wind_load")
+    res['sim_id'] = Path(res_file).stem.split('_')[1]
+    res['sim_n'] = int(Path(res_file).stem.split('_')[1])
     res_records.append(res)
 
 res_df = pd.DataFrame.from_records(res_records)
