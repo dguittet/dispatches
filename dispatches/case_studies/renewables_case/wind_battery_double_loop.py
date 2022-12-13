@@ -16,13 +16,13 @@ from dispatches.case_studies.renewables_case.wind_battery_LMP import (
     wind_battery_mp_block,
     wind_battery_variable_pairs,
     wind_battery_periodic_variable_pairs,
+    default_input_params
 )
 from idaes.apps.grid_integration.multiperiod.multiperiod import MultiPeriodModel
 import pyomo.environ as pyo
 import pandas as pd
 from collections import deque
 from functools import partial
-from dispatches.case_studies.renewables_case.load_parameters import wind_speeds
 
 
 def create_multiperiod_wind_battery_model(n_time_points, wind_cfs, input_params):
@@ -146,10 +146,11 @@ class MultiPeriodWindBattery:
         if not blk.is_constructed():
             blk.construct()
 
-        input_params = {
+        input_params = default_input_params.copy()
+        input_params.update({
             'wind_mw': self._wind_pmax_mw,
-            'batt_mw': self._battery_pmax_mw
-        }
+            'batt_mw': self._battery_pmax_mw,
+        })
         blk.windBattery = create_multiperiod_wind_battery_model(horizon, wind_cfs=self._wind_capacity_factors[0:horizon], input_params=input_params)
         transform_design_model_to_operation_model(
             mp_wind_battery=blk.windBattery,
@@ -157,10 +158,9 @@ class MultiPeriodWindBattery:
             battery_power_capacity=self._battery_pmax_mw * 1e3,
             battery_energy_capacity=self._battery_energy_capacity_mwh * 1e3,
         )
-        blk.windBattery_model = blk.windBattery.pyomo_model
 
         # deactivate any objective functions
-        for obj in blk.windBattery_model.component_objects(pyo.Objective):
+        for obj in blk.windBattery.pyomo_model.component_objects(pyo.Objective):
             obj.deactivate()
 
         # initialize time index for this block
@@ -177,7 +177,7 @@ class MultiPeriodWindBattery:
         for (t, b) in enumerate(active_blks):
             blk.P_T[t] = (b.fs.splitter.grid_elec[0] + b.fs.battery.elec_out[0]) * 1e-3
             blk.wind_waste[t] = (b.fs.windpower.system_capacity * b.fs.windpower.capacity_factor[0] - b.fs.windpower.electricity[0]) * 1e-3
-            blk.tot_cost[t] = b.fs.windpower.op_total_cost + b.fs.battery.var_cost + blk.wind_waste_penalty * blk.wind_waste[t]
+            blk.tot_cost[t] = b.fs.windpower.op_total_cost + b.fs.battery.op_total_cost + blk.wind_waste_penalty * blk.wind_waste[t]
 
         return
 

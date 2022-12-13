@@ -1,0 +1,165 @@
+#################################################################################
+# DISPATCHES was produced under the DOE Design Integration and Synthesis
+# Platform to Advance Tightly Coupled Hybrid Energy Systems program (DISPATCHES),
+# and is copyright (c) 2022 by the software owners: The Regents of the University
+# of California, through Lawrence Berkeley National Laboratory, National
+# Technology & Engineering Solutions of Sandia, LLC, Alliance for Sustainable
+# Energy, LLC, Battelle Energy Alliance, LLC, University of Notre Dame du Lac, et
+# al. All rights reserved.
+#
+# Please see the files COPYRIGHT.md and LICENSE.md for full copyright and license
+# information, respectively. Both files are also available online at the URL:
+# "https://github.com/gmlc-dispatches/dispatches".
+#
+#################################################################################
+import json
+import os, sys
+from pathlib import Path
+import numpy as np
+from itertools import product
+from dispatches.case_studies.renewables_h2_case.re_h2_parameters import re_h2_parameters, get_gen_outputs_from_rtsgmlc
+
+
+wind_gen = "317_WIND"
+wind_gen_pmax = 799.1
+gas_gen = "317_CT"
+reserves = 15
+shortfall = 500
+start_date = '2020-01-01 00:00:00'
+
+n_samples = 4
+middle_slice = slice(1, 3)
+h2_prices = np.linspace(0, 3, n_samples)[middle_slice]
+batt_kw_costs = np.linspace(300, 900, n_samples)[middle_slice]
+batt_kwh_cost_ratios = np.linspace(.2, .4, n_samples)[middle_slice]
+pem_cap_costs = np.linspace(1200, 2000, n_samples)[middle_slice]
+tank_cap_costs = np.linspace(375, 625, n_samples)[middle_slice]
+turbine_cap_costs = np.linspace(750, 1250, n_samples)[middle_slice]
+turb_conv_rates = np.linspace(10, 25, n_samples)[middle_slice]
+
+all_runs = list(product(h2_prices, batt_kw_costs, batt_kwh_cost_ratios, pem_cap_costs, tank_cap_costs, turbine_cap_costs, turb_conv_rates))
+print(len(all_runs))
+params = re_h2_parameters.copy()
+params.pop("load")
+params.pop("wind_resource")
+params.pop("wind_load")
+params['wind_gen'] = wind_gen
+params['wind_gen_pmax'] = wind_gen_pmax
+params['start_date'] = start_date
+params['gas_gen'] = gas_gen
+params['reserves'] = reserves
+params['shortfall'] = shortfall
+params['opt_mode'] = "surrogate"        # comment out to use "meet_load"
+
+
+output_dir = Path(__file__).absolute().parent / f"{len(all_runs)}_results_{317}_{gas_gen[-2:]}_{reserves}_{shortfall}_{params['opt_mode']}"
+if not output_dir.exists():
+    os.mkdir(output_dir)
+
+shell_cmds = f"""#!/bin/bash
+{sys.executable} {output_dir / "runner.py"} """
+
+jade_file = {
+  "configuration_class": "GenericCommandConfiguration",
+  "configuration_module": "jade.extensions.generic_command.generic_command_configuration",
+  "format_version": "v0.2.0",
+  "jobs": []}
+
+for n, (h2_price, batt_kw_cost, batt_kwh_cost_ratio, pem_cap_cost, tank_cap_cost, turbine_cap_cost, turb_conv_rate) in enumerate(all_runs):
+    params["h2_price_per_kg"] = h2_price
+    params["batt_cap_cost_kw"] = batt_kw_cost
+    params["batt_cap_cost_kwh"] = batt_kw_cost * batt_kwh_cost_ratio
+    params["pem_cap_cost"] = pem_cap_cost
+    params["tank_cap_cost_per_kg"] = tank_cap_cost
+    params["turbine_cap_cost"] = turbine_cap_cost
+    params["turb_conv"] = turb_conv_rate
+    file_name = output_dir / f"params_{n:07d}.json"
+    with open(file_name, "w") as f:
+        json.dump(params, f)
+
+    # shell script
+    shell_file = output_dir / f"run_{n:07d}.sh"
+    with open(shell_file, 'w') as f:
+        f.write(shell_cmds + str(file_name))
+    os.chmod(shell_file, 0o775)
+
+    job = {
+      "append_output_dir": False,
+      "blocked_by": [],
+      "command": str(shell_file),
+      "extension": "generic_command",
+      "job_id": n
+    }
+
+    jade_file["jobs"].append(job)
+
+with open(output_dir / "simulate.json", 'w') as f:
+    json.dump(jade_file, f)
+
+python_script = """import json
+import sys, os
+from pathlib import Path
+from pyomo.common.tempfiles import TempfileManager
+from dispatches.case_studies.renewables_h2_case.re_h2_parameters import get_gen_outputs_from_rtsgmlc
+from dispatches.case_studies.renewables_h2_case.wind_battery_hydrogen_flowsheet import wind_battery_hydrogen_optimize
+
+if os.environ.get("SLURMD_NODENAME"):
+    TempfileManager.tempdir = os.environ.get("LOCAL_SCRATCH")
+
+params_file = Path(sys.argv[1])
+run_id = params_file.stem.split("_")[1]
+result_filename = params_file.parent / f"results3_{run_id}"
+if (result_filename / ".json").exists():
+    exit()
+
+with open(params_file, 'r') as f:
+    params = json.load(f)
+
+wind_gen = params['wind_gen']
+wind_gen_pmax = params['wind_gen_pmax']
+gas_gen = params['gas_gen']
+reserves = params['reserves']
+shortfall = params['shortfall']
+start_date = params['start_date']
+
+_, wind_capacity_factors, loads_mw, wind_loads_mw = get_gen_outputs_from_rtsgmlc(wind_gen, gas_gen, reserves, shortfall, start_date)
+params["wind_resource"] = wind_capacity_factors
+params["load"] = loads_mw.tolist()
+params["wind_load"] = wind_loads_mw.tolist()
+params['tempfile'] = str(result_filename) + ".ipopt"
+params["batt_mw"] = 0
+params["batt_mwh"] = 0
+params["turb_mw"] = 0
+params["tank_size"] = params['turb_mw'] * 1e3 / params['turb_conv']
+
+des_res, des_df = wind_battery_hydrogen_optimize(n_time_points=8784, input_params=params, verbose=False, plot=False)
+
+des_df.to_parquet(str(result_filename) + ".parquet")
+
+params.pop("load")
+params.pop("wind_load")
+params.pop("wind_resource")
+params.pop("pyo_model")
+
+with open(str(result_filename) + ".json", 'w') as f:
+    json.dump({**params, **des_res}, f)
+"""
+
+with open(output_dir / "runner.py", 'w') as f:
+    f.write(python_script)
+
+toml_file = """hpc_type = "slurm"
+job_prefix = "job"
+
+[hpc]
+account = "gmihybridsys"
+partition = "standard"
+walltime = "48:00:00"
+mem = "150G"
+tmp = "800GB"
+
+#--per-node-batch-size=108 
+"""
+
+with open(output_dir / "simulate.toml", 'w') as f:
+    f.write(toml_file)

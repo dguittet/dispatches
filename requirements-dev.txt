@@ -5,5 +5,8 @@ addheader
 dispatches-sample-data==22.9.19
 nbval
 nbsphinx
+utm
+fastparquet
+pyvis
 
 --editable .

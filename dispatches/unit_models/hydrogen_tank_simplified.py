@@ -183,7 +183,7 @@ see property package for documentation.}""",
                              - blk.properties_out_pipeline[t].flow_mol
                              - blk.properties_out_turbine[t].flow_mol)
             )
-
+        
     def initialize_build(
         blk,
         state_args_in=None,

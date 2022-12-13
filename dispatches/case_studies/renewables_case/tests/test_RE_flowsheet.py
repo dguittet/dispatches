@@ -15,6 +15,7 @@
 import pytest
 import platform
 from idaes.core.util.model_statistics import degrees_of_freedom
+from PySAM.ResourceTools import SRW_to_wind_data
 
 from dispatches.unit_models import HydrogenTank as DetailedHydrogenTank
 from dispatches.case_studies.renewables_case.RE_flowsheet import *
@@ -42,6 +43,10 @@ def input_params():
                         }
                     } for t in range(8760)}
     params["wind_resource"] = wind_resource
+    params["batt_hr"] = 4
+    params["batt_cap_cost_kw"] = 1200
+    params["batt_cap_cost_kwh"] = 0
+    params["batt_rep_cost_kwh"] = 150
     return params
 
 def test_h2_valve_opening():
@@ -104,7 +109,7 @@ def test_create_model(input_params):
         pem_bar=pem_bar,
         batt_mw=fixed_batt_mw,
         tank_type=tank_type,
-        tank_length_m=fixed_tank_size,
+        tank_length_m=fixed_tank_kg,
         turb_inlet_bar=pem_bar,
         wind_resource_config=input_params['wind_resource'][0]['wind_resource_config']
     )
@@ -129,11 +134,11 @@ def test_create_model(input_params):
         assert m.fs.h2_tank.energy_balances.active
     assert m.fs.mixer.air_h2_ratio.active
     assert m.fs.mixer.purchased_hydrogen_feed.flow_mol[0].lb
-    assert value(m.fs.h2_turbine.turbine.deltaP[0]) == -2401000.0
+    assert value(m.fs.h2_turbine.turbine.deltaP[0]) == -compressor_dp * 1e5
     assert value(m.fs.mixer.air_feed.mole_frac_comp[0, "hydrogen"]) == 2e-4
 
     dof = degrees_of_freedom(m)
-    assert dof == 10
+    assert dof == 13
 
 
 def test_wind_battery_optimize(input_params):
@@ -142,7 +147,7 @@ def test_wind_battery_optimize(input_params):
     assert value(mp.pyomo_model.annual_revenue) == pytest.approx(168691601, rel=1e-3)
     blks = mp.get_active_process_blocks()
     assert value(blks[0].fs.battery.nameplate_power) == pytest.approx(1326779, rel=1e-3)
-    plot_results(*record_results(mp))
+    plot_results(*record_results(mp), input_params['opt_mode'])
 
 
 def test_wind_battery_pem_optimize(input_params):
@@ -158,26 +163,31 @@ def test_wind_battery_pem_optimize(input_params):
 def test_wind_battery_pem_tank_turb_optimize_simple(input_params):
     input_params['h2_price_per_kg'] = 2.0
     design_res = wind_battery_pem_tank_turb_optimize(6 * 24, input_params, verbose=False, plot=False)
-    assert design_res['batt_mw'] == pytest.approx(4874, rel=1e-2)
+    assert design_res['batt_mw'] == pytest.approx(4295, rel=1e-2)
+    assert design_res['batt_mwh'] == pytest.approx(17281, rel=1e-2)
     assert design_res['pem_mw'] == pytest.approx(0, abs=3)
     assert design_res['tank_kgH2'] == pytest.approx(0, abs=3)
     assert design_res['turb_mw'] == pytest.approx(0, abs=3)
-    assert design_res['avg_turb_eff'] == pytest.approx(1.51, rel=1e-1)
-    assert design_res['annual_rev_h2'] == pytest.approx(2634, abs=5e3)
-    assert design_res['annual_rev_E'] == pytest.approx(531566543, rel=1e-2)
-    assert design_res['NPV'] == pytest.approx(2344545889, rel=1e-2)
+    assert design_res['avg_turb_kWh_per_kgH2'] == pytest.approx(24, abs=5)
+    assert design_res['annual_rev_h2'] == pytest.approx(0, abs=5e2)
+    assert design_res['annual_rev_E'] == pytest.approx(444248535, rel=1e-2)
+    assert design_res['NPV'] == pytest.approx(1693277465, rel=1e-2)
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Platform differences in IPOPT solve")
 def test_wind_battery_pem_tank_turb_optimize_detailed(input_params):
     input_params['h2_price_per_kg'] = 2.0
     input_params['tank_type'] = 'detailed'
+    input_params['design_opt'] = False
+    input_params['batt_mw'] = 4295
+    input_params['batt_mwh'] = 17281
+    input_params['pem_mw'] = 0
     design_res = wind_battery_pem_tank_turb_optimize(6 * 24, input_params=input_params, verbose=True, plot=False)
-    assert design_res['batt_mw'] == pytest.approx(4874, rel=1e-2)
+    assert design_res['batt_mw'] == pytest.approx(4295, rel=1e-2)
     assert design_res['pem_mw'] == pytest.approx(0, abs=3)
     assert design_res['tank_kgH2'] == pytest.approx(0, abs=3)
     assert design_res['turb_mw'] == pytest.approx(0, abs=3)
-    assert design_res['avg_turb_eff'] == pytest.approx(1.51, rel=1e-1)
-    assert design_res['annual_rev_h2'] == pytest.approx(2634, abs=5e3)
-    assert design_res['annual_rev_E'] == pytest.approx(531566543, rel=1e-2)
-    assert design_res['NPV'] == pytest.approx(2344545889, rel=1e-2)
+    assert design_res['avg_turb_kWh_per_kgH2'] == pytest.approx(24, abs=5)
+    assert design_res['annual_rev_h2'] == pytest.approx(0, abs=5e2)
+    assert design_res['annual_rev_E'] == pytest.approx(444248535, rel=1e-2)
+    assert design_res['NPV'] == pytest.approx(1693277465, rel=1e-2)
