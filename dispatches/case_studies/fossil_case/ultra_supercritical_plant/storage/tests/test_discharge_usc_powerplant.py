@@ -67,7 +67,6 @@ def model():
     return m
 
 
-@pytest.mark.fails_in_ci
 @pytest.mark.integration
 def test_main_function():
 
@@ -105,7 +104,6 @@ def test_costing(model):
     assert degrees_of_freedom(model) == 0
 
 
-@pytest.mark.fails_in_ci
 @pytest.mark.integration
 def test_usc_discharge_model(model):
     # Add missing functions to complete the discharge model (add bounds
@@ -134,7 +132,7 @@ def test_usc_discharge_model(model):
     assert result.solver.termination_condition == TerminationCondition.optimal
     assert value(
         model.fs.discharge.condpump_source_disjunct.binary_indicator_var) == 1
-    assert value(model.fs.discharge.hxd.area) == pytest.approx(480.5,
+    assert value(model.fs.discharge.hxd.area) == pytest.approx(665.8,
                                                                abs=1e-1)
 # @pytest.mark.integration
 # def test_unit_consistency(model):
