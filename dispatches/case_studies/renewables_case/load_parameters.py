@@ -69,7 +69,7 @@ N = 30                                      # years
 PA = ((1+i)**N - 1)/(i*(1+i)**N)            # present value / annuity = 1 / CRF
 
 # load pre-compiled RTS-GMLC output data
-df = pd.read_csv(re_case_dir / "data" / "Wind_Thermal_Dispatch.csv", index_col='Unnamed: 0', parse_dates=True)
+df = pd.read_csv(re_case_dir / "data" / "Wind_Thermal_Dispatch.csv", index_col='DateTime', parse_dates=True)
 
 bus = "317"
 market = "DA"

@@ -68,7 +68,7 @@ class SpecialDependencies:
         "idaes-pse==2.0.0b2",
     ]
     for_prerelease = [
-        "idaes-pse @ https://github.com/IDAES/idaes-pse/archive/2.0.0b2.zip",
+        "idaes-pse @ https://github.com/dguittet/idaes-pse/archive/update_grid_integration.zip",
     ]
 
 
@@ -80,7 +80,7 @@ SPECIAL_DEPENDENCIES = SpecialDependencies.for_prerelease
 setup(
     name="dispatches",
     url="https://github.com/gmlc-dispatches/dispatches",
-    version="1.1.dev0",
+    version="1.2.dev0",
     description="GMLC DISPATCHES software tools",
     long_description=long_description,
     long_description_content_type="text/plain",
@@ -120,7 +120,7 @@ setup(
         "jupyter",
         # for visualizing DMF provenance
         "graphviz",
-        "gridx-prescient>=2.2",
+        "gridx-prescient>=2.2.1",
         "nrel-pysam>=3.0.1",
         *SPECIAL_DEPENDENCIES
     ],
