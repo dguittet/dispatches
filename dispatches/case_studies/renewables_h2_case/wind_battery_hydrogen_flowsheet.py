@@ -292,6 +292,26 @@ def calculate_variable_costs(mp_model, input_params):
                                                  + blk.turb_var_cost)
 
 
+def add_revenue_max_obj(mp_model, input_params):
+    m = mp_model.pyomo_model
+    blks = mp_model.get_active_process_blocks()
+    n_weeks = len(blks) / (7 * 24)
+
+    for (i, blk) in enumerate(blks):
+        blk_battery = blk.fs.battery
+        blk_tank = blk.fs.h2_tank
+
+        blk.lmp_signal = pyo.Param(default=input_params['LMPs'][i] * 1e-3, mutable=True)
+        blk.elec_revenue = blk.lmp_signal * (blk.fs.splitter.grid_elec[0] + blk_battery.elec_out[0] + blk.fs.h2_turbine_elec)
+        blk.hydrogen_revenue = pyo.Expression(expr=m.h2_price_per_kg / h2_mols_per_kg * blk_tank.outlet_to_pipeline.flow_mol[0] * 3600)
+
+    m.annual_revenue = pyo.Expression(expr=(sum([-blk.var_total_cost + blk.hydrogen_revenue + blk.elec_revenue for blk in blks])) * 52.143 / n_weeks
+                                           - m.annual_fixed_cost)
+
+    m.NPV = pyo.Expression(expr=-m.total_cap_cost + PA * m.annual_revenue)
+    m.obj = pyo.Objective(expr=-m.NPV * 1e-8)
+
+
 def add_load_following_obj(mp_model, input_params):
     m = mp_model.pyomo_model
     blks = mp_model.get_active_process_blocks()
@@ -463,7 +483,7 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         `turb_conv`: h2 conversion rate kWh/kgH2
         `wind_resource`: dictionary of wind resource configs for each time point
         `h2_price_per_kg`: market price of hydrogen
-        `DA_LMPs`: LMPs for each time point
+        `LMPs`: LMPs for each time point
         `build_add_wind`: if false, fix wind size to initial size and do not add wind capital cost to NPV.
             otherwise, any additional wind beyond that `wind_mw` incurs capital cost 
 
@@ -501,6 +521,8 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     elif input_params['opt_mode'] == "surrogate":
         blks_month = add_surrogate_obj(mp_model, input_params)
         solvers_list = ['ipopt']
+    elif input_params['opt_mode'] == "pricetaker":
+        add_revenue_max_obj(mp_model, input_params)
 
     opt = None
     for solver in solvers_list:
@@ -546,7 +568,7 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     batt_soc = [pyo.value(blks[i].fs.battery.state_of_charge[0]) for i in range(n_time_points)]
     h2_turbine_elec = [pyo.value(blks[i].fs.h2_turbine_elec) for i in range(n_time_points)]
     
-    elec_costs = [pyo.value(blks[i].costs) for i in range(n_time_points)]
+    elec_costs = [pyo.value(blks[i].costs if hasattr(blks[i], "costs") else blks[i].var_total_cost) for i in range(n_time_points)]
     h2_revenue = [pyo.value(blks[i].hydrogen_revenue) for i in range(n_time_points)]
     
     hours = np.arange(n_time_points)
@@ -563,7 +585,7 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         'wind_mw': wind_cap,
         "batt_mw": batt_cap,
         "batt_mwh": batt_energy,
-        "batt_hr": batt_energy / batt_cap,
+        "batt_hr": batt_energy / batt_cap if batt_cap > 0 else 0,
         "pem_mw": pem_cap,
         "tank_tonH2": tank_size,
         "turb_mw": turb_cap,
@@ -571,7 +593,8 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         "annual_costs_E": sum(elec_costs) * 52 / n_weeks,
         "NPV": value(m.NPV),
         "capital_cost": value(m.total_cap_cost),
-        "annual_costs_fixed": value(m.annual_fixed_cost)
+        "annual_costs_fixed": value(m.annual_fixed_cost),
+        "annual_revenue": value(m.annual_revenue)
     }
 
     if input_params['opt_mode'] == 'surrogate':
@@ -587,9 +610,13 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         design_res["avg_revenue_per_mwh"] = sum(avg_revenue_per_mwh) / len(avg_revenue_per_mwh)
         design_res['PMaxMW'] = value(m.PMaxMW)
         design_res['Bid_$/MW'] = value(m.HR_avg) * 3.88722 * 1e-3 # Model fit from NG plants with 3.88722 $/MMBTU 
-    else:
+    elif input_params['opt_mode'] == 'meet_load':
         under_power = [pyo.value(blks[i].under_power) for i in range(n_time_points)]
         design_res["annual_under_power"] = sum(np.round(under_power, 3)) * 52 / n_weeks
+    elif input_params['opt_mode'] == 'pricetaker':
+        revenue = [pyo.value(blks[i].elec_revenue) for i in range(n_time_points)]
+        design_res["annual_rev_E"] = sum(revenue) * n_hrs / n_time_points
+
 
     print(design_res)
 
@@ -680,11 +707,11 @@ if __name__ == "__main__":
     re_h2_parameters["batt_mw"] = 0
     re_h2_parameters["batt_mwh"] = 0
     re_h2_parameters["turb_mw"] = 0
-    re_h2_parameters['opt_mode'] = "surrogate"
+    re_h2_parameters['opt_mode'] = "pricetaker"
 
-    # re_h2_parameters["design_opt"] = False
+    re_h2_parameters["design_opt"] = True
 
     re_h2_parameters["tank_size"] = re_h2_parameters['turb_mw'] * 1e3 / re_h2_parameters['turb_conv']
-    des_res, df_res = wind_battery_hydrogen_optimize(n_time_points=int(8784/12), input_params=re_h2_parameters, verbose=False, plot=False)
+    des_res, df_res = wind_battery_hydrogen_optimize(n_time_points=int(8784/12), input_params=re_h2_parameters, verbose=False, plot=True)
     df_res.to_parquet(re_h2_dir / "design_results.parquet")
     print(des_res)
