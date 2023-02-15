@@ -32,7 +32,7 @@ def input_params():
 
         prices_used = copy.copy(price)
         prices_used[prices_used > 200] = 200
-    params['DA_LMPs'] = prices_used
+    params['LMPs'] = prices_used
 
     # wind resource data from example Wind Toolkit file
     wind_data = SRW_to_wind_data(re_case_dir / 'data' / '44.21_-101.94_windtoolkit_2012_60min_80m.srw')

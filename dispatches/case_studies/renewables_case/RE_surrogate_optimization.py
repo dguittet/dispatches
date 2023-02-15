@@ -341,7 +341,7 @@ default_input_params = {
     "turb_mw": None,
 
     "h2_price_per_kg": 3,
-    "DA_LMPs": None,
+    "LMPs": None,
 
     "design_opt": True,
     "extant_wind": True,        # fixed because parameter sweeps didn't change wind size

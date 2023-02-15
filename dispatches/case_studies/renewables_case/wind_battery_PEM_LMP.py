@@ -197,7 +197,7 @@ def wind_battery_pem_optimize(time_points, input_params=default_input_params, ve
         `pem_temp`: operating temperature [K]
         `wind_resource`: dictionary of wind resource configs for each time point
         `h2_price_per_kg`: market price of hydrogen
-        `DA_LMPs`: LMPs for each time point
+        `LMPs`: LMPs for each time point
         `design_opt`: true to optimize design, else sizes are fixed at initial guess sizes
         `extant_wind`: if true, fix wind size to initial size and do not add wind capital cost to NPV
 
@@ -271,7 +271,7 @@ def wind_battery_pem_optimize(time_points, input_params=default_input_params, ve
         blk.hydrogen_revenue = pyo.Expression(expr=m.h2_price_per_kg * blk_pem.outlet.flow_mol[0] / h2_mols_per_kg * 3600)
 
     for (i, blk) in enumerate(blks):
-        blk.lmp_signal.set_value(input_params['DA_LMPs'][i]) 
+        blk.lmp_signal.set_value(input_params['LMPs'][i]) 
 
     n_weeks = time_points / (7 * 24)
 
@@ -309,7 +309,7 @@ def wind_battery_pem_optimize(time_points, input_params=default_input_params, ve
 
     n_weeks_to_plot = 1
     hours = np.arange(time_points)
-    lmp_array = input_params['DA_LMPs'][0:time_points]
+    lmp_array = input_params['LMPs'][0:time_points]
     h2_prod = np.asarray(h2_prod[0:n_weeks_to_plot]).flatten()
     wind_to_pem = np.asarray(wind_to_pem[0:n_weeks_to_plot]).flatten()
     wind_gen = np.asarray(wind_gen[0:n_weeks_to_plot]).flatten()

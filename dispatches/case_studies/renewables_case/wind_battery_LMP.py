@@ -191,7 +191,7 @@ def add_profit_obj(mp_wind_battery, input_params):
                                          - blk_battery.op_total_cost)
 
     for (i, blk) in enumerate(blks):
-        blk.lmp_signal.set_value(input_params['DA_LMPs'][i] * 1e-3) 
+        blk.lmp_signal.set_value(input_params['LMPs'][i] * 1e-3) 
     
     m.annual_revenue = pyo.Expression(expr=sum([blk.profit for blk in blks]) * 52 / n_weeks)
     m.NPV = pyo.Expression(
@@ -252,7 +252,7 @@ def wind_battery_optimize(n_time_points, input_params, verbose=False):
         `wind_mw_ub`: upper bound of wind size
         `batt_mw`: initial guess of the battery size
         `wind_resource`: dictionary of wind resource configs for each time point
-        `DA_LMPs`: LMPs for each time point
+        `LMPs`: LMPs for each time point
         `design_opt`: true to optimize design, else sizes are fixed at initial guess sizes
         `extant_wind`: if true, fix wind size to initial size and do not add wind capital cost to NPV
 

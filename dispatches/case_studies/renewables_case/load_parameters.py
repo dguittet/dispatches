@@ -35,7 +35,8 @@ batt_rep_cost_kwh = (batt_cap_cost_kw + 2 * batt_cap_cost_kwh) * 0.5 / 4 # assum
 pem_cap_cost = 1600
 pem_op_cost = 47.9
 pem_var_cost = 1.3/1000                     # per kWh
-tank_cap_cost_per_kg = 500                  # per kg
+tank_cap_cost_per_m3 = 29 * 0.8 * 1000      # per m^3
+tank_cap_cost_per_kg = 29 * 33.5            # per kg
 tank_op_cost = .17 * tank_cap_cost_per_kg   # per kg
 turbine_cap_cost = 1000
 turbine_op_cost = 11.65
@@ -47,11 +48,11 @@ h2_price_per_kg = 2
 # sizes
 fixed_wind_mw = 847
 wind_mw_ub = 10000
-fixed_batt_mw = 4874
-fixed_pem_mw = 643
-turb_p_mw = 1
+fixed_batt_mw = 400
+fixed_pem_mw = 400
+turb_p_mw = 100
 valve_cv = 0.00001
-fixed_tank_kg = 0.5
+fixed_tank_kg = 100
 
 # operation parameters
 pem_kwh_kg = 0.002527406                    # Conversion of kW to mol/sec of H2 based on H-tec design of 54.517kW-hr/kg
@@ -63,34 +64,52 @@ air_h2_ratio = 10.76
 compressor_dp = 10
 max_pressure_bar = 700
 
+# load pre-compiled RTS-GMLC output data
+df = pd.read_csv(re_case_dir / "data" / "Wind_Thermal_Dispatch.csv")
+df.index = pd.to_datetime(df["DateTime"])
+
+# drop indices not in original data set
+start_date = pd.Timestamp('2020-01-02 00:00:00')
+ix = pd.date_range(start=start_date, 
+                    end=start_date
+                    + pd.offsets.DateOffset(days=365)
+                    - pd.offsets.DateOffset(hours=1),
+                    freq='1H')
+ix = ix[(ix.day != 29) | (ix.month != 2)]
+
+df = df[df.index.isin(ix)]
+
+bus = "303"
+market = "Both"
+if market == "Both":
+    prices = np.max((df[f"{bus}_DALMP"].values, df[f"{bus}_RTLMP"].values), axis=0)
+else:
+    prices = df[f"{bus}_{market}LMP"].values
+prices_used = copy.copy(prices)
+# prices_used[prices_used > 200] = 200
+weekly_prices = prices_used.reshape(52, 168)
+# n_time_points = 7 * 24
+
+n_timesteps = len(prices)
+
+if market == "Both":
+    wind_cfs = df[f"{bus}_WIND_1-RTCF"].values
+else:
+    wind_cfs = df[f"{bus}_WIND_1-{market}CF"].values
+
+wind_capacity_factors = {t:
+                            {'wind_resource_config': {
+                                'capacity_factor': 
+                                    [wind_cfs[t]]}} for t in range(n_timesteps)}
 # simple financial assumptions
 i = 0.05                                    # discount rate
 N = 30                                      # years
 PA = ((1+i)**N - 1)/(i*(1+i)**N)            # present value / annuity = 1 / CRF
 
-# load pre-compiled RTS-GMLC output data
-df = pd.read_csv(re_case_dir / "data" / "Wind_Thermal_Dispatch.csv", index_col='DateTime', parse_dates=True)
-
-bus = "317"
-market = "DA"
-
-prices = df[f"{bus}_{market}LMP"].values
-prices_used = copy.copy(prices)
-prices_used[prices_used > 200] = 200
-weekly_prices = prices_used.reshape(52, 168)
-
-wind_cfs = df[f"{bus}_WIND_1-{market}CF"].values
-wind_capacity_factors = {t:
-                            {'wind_resource_config': {
-                                'capacity_factor': 
-                                    [wind_cfs[t]]}} for t in range(len(wind_cfs))}
-
-
 default_input_params = {
     "wind_mw": fixed_wind_mw,
     "wind_mw_ub": wind_mw_ub,
     "batt_mw": fixed_batt_mw,
-    "batt_hr": 4,
     "pem_mw": fixed_pem_mw,
     "pem_bar": pem_bar,
     "pem_temp": pem_temp,
@@ -100,7 +119,7 @@ default_input_params = {
 
     "wind_resource": wind_capacity_factors,
     "h2_price_per_kg": h2_price_per_kg,
-    "DA_LMPs": prices_used,
+    "LMPs": prices_used,
 
     "design_opt": True,
     "extant_wind": True,

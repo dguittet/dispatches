@@ -298,7 +298,7 @@ def add_profit_obj(mp_model, input_params):
         blk_turb = blk.fs.h2_turbine
 
         # add market data for each block
-        blk.lmp_signal = pyo.Param(default=input_params['DA_LMPs'][i] * 1e-3, mutable=True)
+        blk.lmp_signal = pyo.Param(default=input_params['LMPs'][i] * 1e-3, mutable=True)
 
         blk.revenue = blk.lmp_signal * (blk.fs.splitter.grid_elec[0] + blk_battery.elec_out[0] + blk_turb.electricity[0])
         blk.profit = pyo.Expression(expr=blk.revenue
@@ -371,7 +371,7 @@ def wind_battery_pem_tank_turb_optimize(n_time_points, input_params, verbose=Fal
         `turb_mw`: intial guess of the turbine size
         `wind_resource`: dictionary of wind resource configs for each time point
         `h2_price_per_kg`: market price of hydrogen
-        `DA_LMPs`: LMPs for each time point
+        `LMPs`: LMPs for each time point
         `design_opt`: true to optimize design, else sizes are fixed at initial guess sizes
         `extant_wind`: if true, fix wind size to initial size and do not add wind capital cost to NPV
 
@@ -522,7 +522,7 @@ def wind_battery_pem_tank_turb_optimize(n_time_points, input_params, verbose=Fal
     if input_params['opt_mode'] == 'meet_load':
         under_power = [pyo.value(blks[i].under_power) for i in range(n_time_points)]
     if input_params['opt_mode'] == "profit":
-        lmp_array = input_params['DA_LMPs'][0:n_time_points]
+        lmp_array = input_params['LMPs'][0:n_time_points]
 
     hours = np.arange(n_time_points)
 
@@ -611,7 +611,7 @@ def wind_battery_pem_tank_turb_optimize(n_time_points, input_params, verbose=Fal
 
 if __name__ == "__main__":
     input_params = default_input_params.copy()
-    input_params.pop("DA_LMPs")
+    input_params.pop("LMPs")
     input_params.pop("wind_resource")
     print(input_params)
     des_res = wind_battery_pem_tank_turb_optimize(n_time_points=14 * 24, input_params=default_input_params, verbose=True, plot=True)
