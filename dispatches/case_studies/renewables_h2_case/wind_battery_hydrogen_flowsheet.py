@@ -200,10 +200,7 @@ def size_constraints(mp_model, input_params):
     m = mp_model.pyomo_model
     blks = mp_model.get_active_process_blocks()
 
-    m.wind_system_capacity = pyo.Param(default=input_params['wind_mw'] * 1e3, units=pyo.units.kW)
-    m.wind_add_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=0, units=pyo.units.kW)
-    if not input_params['build_add_wind']:
-        m.wind_add_system_capacity.fix(0)
+    m.wind_system_capacity = pyo.Var(domain=pyo.Reals, initialize=input_params['wind_mw'] * 1e3, units=pyo.units.kW, bounds=(0, input_params['wind_mw_ub'] * 1e3))
     m.battery_system_capacity = pyo.Var(domain=pyo.NonNegativeReals, initialize=input_params['batt_mw'] * 1e3, units=pyo.units.kW)
     m.battery_system_energy = pyo.Var(domain=pyo.NonNegativeReals, initialize=(input_params['batt_mwh'] if 'batt_mwh' in input_params.keys()
                                                                                 else (input_params['batt_mw'] * input_params['batt_hr'])) * 1e3, units=pyo.units.kWh)
@@ -217,8 +214,10 @@ def size_constraints(mp_model, input_params):
         m.pem_system_capacity.fix()
         m.h2_tank_size.fix()
         m.turb_system_capacity.fix()
+    if not input_params['build_add_wind']:
+        m.wind_system_capacity.fix()
 
-    m.wind_max_p = pyo.Constraint(mp_model.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.windpower.system_capacity <= m.wind_system_capacity + m.wind_add_system_capacity)
+    m.wind_max_p = pyo.Constraint(mp_model.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.windpower.system_capacity <= m.wind_system_capacity)
     m.battery_max_p = pyo.Constraint(mp_model.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.battery.nameplate_power <= m.battery_system_capacity)
     m.battery_max_e = pyo.Constraint(mp_model.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.battery.nameplate_energy <= m.battery_system_energy)
     m.pem_max_p = pyo.Constraint(mp_model.pyomo_model.TIME, rule=lambda b, t: blks[t].fs.pem.electricity[0] <= m.pem_system_capacity)
@@ -234,12 +233,12 @@ def calculate_capital_costs(m, input_params):
     m.tank_cap_cost = pyo.Param(default=input_params["tank_cap_cost_per_kg"], mutable=True)
     m.turb_cap_cost = pyo.Param(default=input_params["turbine_cap_cost"], mutable=True)
 
-    m.total_cap_cost = pyo.Expression(expr=m.wind_cap_cost * m.wind_add_system_capacity
-                                       + m.batt_cap_cost_kw * m.battery_system_capacity
-                                       + m.batt_cap_cost_kwh * m.battery_system_energy
-                                       + m.pem_cap_cost * m.pem_system_capacity
-                                       + m.tank_cap_cost * m.h2_tank_size
-                                       + m.turb_cap_cost * m.turb_system_capacity)
+    m.total_cap_cost = pyo.Expression(expr=m.wind_cap_cost * m.wind_system_capacity
+                                            + m.batt_cap_cost_kw * m.battery_system_capacity
+                                            + m.batt_cap_cost_kwh * m.battery_system_energy
+                                            + m.pem_cap_cost * m.pem_system_capacity
+                                            + m.tank_cap_cost * m.h2_tank_size
+                                            + m.turb_cap_cost * m.turb_system_capacity)
 
 
 def calculate_fixed_costs(m, input_params):
@@ -546,9 +545,9 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         log_infeasible_constraints(m, logger=solve_log, tol=1e-4, log_expression=True, log_variables=True)
         log_infeasible_bounds(m, logger=solve_log, tol=1e-4)
 
-    opt.solve(m, tee=True)
+    res = opt.solve(m, tee=True)
 
-    if verbose:
+    if res.Solver.Status != 'ok' or verbose:
         solve_log = idaeslog.getInitLogger("infeasibility", idaeslog.INFO, tag="properties")
         log_infeasible_constraints(m, logger=solve_log, tol=1e-4, log_expression=False, log_variables=False)
         log_infeasible_bounds(m, logger=solve_log, tol=1e-4)
@@ -573,7 +572,7 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
     
     hours = np.arange(n_time_points)
 
-    wind_cap = value(m.wind_system_capacity + m.wind_add_system_capacity) * 1e-3
+    wind_cap = value(m.wind_system_capacity) * 1e-3
     batt_cap = value(m.battery_system_capacity) * 1e-3
     batt_energy = value(m.battery_system_energy) * 1e-3
 
@@ -694,7 +693,6 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         df['Peaker Energy Price [$/MWh]'] = np.repeat(avg_revenue_per_mwh, ts_per_month)
         df['Peaker Revenue [$]'] = np.repeat(revenue, ts_per_month)
         df['Peaker Dispatch CF Month [1]'] = np.repeat(dispatch_cf_month, ts_per_month)
-
     return design_res, df
 
 

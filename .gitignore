@@ -52,4 +52,8 @@ auto-save-list
 *_results/
 *_results_*/
 sim_*/
+result_*.json
+*_results.csv
+*.parquet
+
 
