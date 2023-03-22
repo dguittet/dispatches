@@ -107,8 +107,7 @@ def add_pem(m, outlet_pressure_bar):
 
     m.fs.pem = PEM_Electrolyzer(property_package=m.fs.h2ideal_props)
 
-    # Conversion of kW to mol/sec of H2. (elec*elec_to_mol) based on H-tec design of 54.517kW-hr/kg
-    m.fs.pem.electricity_to_mol.fix(0.002527406)
+    m.fs.pem.electricity_to_mol.fix(pem_kwh_kg)
     m.fs.pem.outlet.pressure.setub(max_pressure_bar * 1e5)
     m.fs.pem.outlet.pressure.fix(outlet_pressure_bar * 1e5)
     m.fs.pem.outlet.temperature.fix(pem_temp)
@@ -132,8 +131,6 @@ def add_battery(m, batt_mw):
     m.fs.battery.discharging_eta.set_value(0.95)
     m.fs.battery.dt.set_value(timestep_hrs)
     m.fs.battery.nameplate_power.fix(batt_mw * 1e3)
-    m.fs.battery.duration = Param(default=4, mutable=True, units=pyunits.kWh/pyunits.kW)
-    m.fs.battery.four_hr_battery = Constraint(expr=m.fs.battery.nameplate_power * m.fs.battery.duration == m.fs.battery.nameplate_energy)
     return m.fs.battery
 
 
@@ -264,13 +261,20 @@ def add_h2_turbine(m, inlet_pres_bar):
     m.fs.mixer.air_feed.mole_frac_comp[0, "nitrogen"].fix(0.7672)
     m.fs.mixer.air_feed.mole_frac_comp[0, "water"].fix(0.0240)
     m.fs.mixer.air_feed.mole_frac_comp[0, "hydrogen"].fix(2e-4)
-    m.fs.mixer.purchased_hydrogen_feed.pressure[0].fix(inlet_pres_bar * 1e5)
-    m.fs.mixer.purchased_hydrogen_feed.temperature[0].fix(pem_temp)
-    m.fs.mixer.purchased_hydrogen_feed.mole_frac_comp[0, "hydrogen"].fix(0.99)
-    m.fs.mixer.purchased_hydrogen_feed.mole_frac_comp[0, "oxygen"].fix(0.01/4)
-    m.fs.mixer.purchased_hydrogen_feed.mole_frac_comp[0, "argon"].fix(0.01/4)
-    m.fs.mixer.purchased_hydrogen_feed.mole_frac_comp[0, "nitrogen"].fix(0.01/4)
-    m.fs.mixer.purchased_hydrogen_feed.mole_frac_comp[0, "water"].fix(0.01/4)
+
+    m.fs.mixer.purchased_hydrogen_feed.mole_frac_comp[0, "hydrogen"].set_value(1)
+    m.fs.mixer.purchased_hydrogen_feed.mole_frac_comp[0, "oxygen"].fix(1e-10)
+    m.fs.mixer.purchased_hydrogen_feed.mole_frac_comp[0, "argon"].fix(1e-10)
+    m.fs.mixer.purchased_hydrogen_feed.mole_frac_comp[0, "nitrogen"].fix(1e-10)
+    m.fs.mixer.purchased_hydrogen_feed.mole_frac_comp[0, "water"].fix(1e-10)
+
+    m.fs.mixer.air_feed_state[0].flow_mol.setub(1e7)
+    m.fs.mixer.hydrogen_feed_state[0].flow_mol.setub(1e7)
+    m.fs.mixer.mixed_state[0].flow_mol.setub(1e7)
+    m.fs.mixer.air_feed_state[0.0].flow_mol_phase['Vap'].setub(1e7)
+    m.fs.mixer.hydrogen_feed_state[0.0].flow_mol_phase['Vap'].setub(1e7)
+    m.fs.mixer.mixed_state[0.0].flow_mol_phase['Vap'].setub(1e7)
+
 
     m.fs.mixer.mixed_state[0].pressure.setub(max_pressure_bar * 1e5)
     m.fs.mixer.air_feed_state[0].pressure.setub(max_pressure_bar * 1e5)
@@ -281,7 +285,9 @@ def add_h2_turbine(m, inlet_pres_bar):
         expr=m.fs.mixer.air_feed.flow_mol[0] == air_h2_ratio * (
                 m.fs.mixer.purchased_hydrogen_feed.flow_mol[0] + m.fs.mixer.hydrogen_feed.flow_mol[0]))
 
-    m.fs.mixer.purchased_hydrogen_feed.flow_mol[0].setlb(h2_turb_min_flow / 2)
+    m.fs.mixer.purchased_hydrogen_feed.flow_mol[0].setlb(h2_turb_min_flow * 0.9)
+    m.fs.mixer.purchased_hydrogen_feed.flow_mol[0].setub(h2_turb_min_flow * 1.1)
+
 
     m.fs.translator_to_mixer = Arc(
         source=m.fs.translator.outlet,
@@ -293,19 +299,39 @@ def add_h2_turbine(m, inlet_pres_bar):
         reaction_package=m.fs.reaction_params,
     )
     m.fs.h2_turbine.compressor.deltaP.fix(compressor_dp * 1e5)
-    m.fs.h2_turbine.compressor.efficiency_isentropic.fix(0.86)
-
+    m.fs.h2_turbine.compressor.ratioP[0.0].unfix()
+    m.fs.h2_turbine.compressor.efficiency_isentropic.fix(0.76)
+    m.fs.h2_turbine.compressor.control_volume.properties_in[0.0].flow_mol.setub(1e7)
+    m.fs.h2_turbine.compressor.control_volume.properties_out[0.0].flow_mol.setub(1e7)
+    m.fs.h2_turbine.compressor.control_volume.properties_in[0.0].flow_mol_phase['Vap'].setub(1e7)
+    m.fs.h2_turbine.compressor.control_volume.properties_out[0.0].flow_mol_phase['Vap'].setub(1e7)
+    m.fs.h2_turbine.compressor.properties_isentropic[0.0].flow_mol_phase['Vap'].setub(1e7)
+    m.fs.h2_turbine.compressor.properties_isentropic[0.0].flow_mol.setub(1e7)
     # Specify the Stoichiometric Conversion Rate of hydrogen
     # in the equation shown below
     # H2(g) + O2(g) --> H2O(g) + energy
-    m.fs.h2_turbine.stoic_reactor.conversion.fix(0.99)
+    m.fs.h2_turbine.stoic_reactor.conversion.fix(0.7)
+    m.fs.h2_turbine.stoic_reactor.control_volume.properties_in[0.0].flow_mol_phase['Vap'].setub(1e7)
+    m.fs.h2_turbine.stoic_reactor.control_volume.properties_in[0.0].flow_mol.setub(1e7)
+    m.fs.h2_turbine.stoic_reactor.control_volume.properties_out[0.0].flow_mol.setub(1e7)
+    m.fs.h2_turbine.stoic_reactor.control_volume.properties_out[0.0].flow_mol_phase['Vap'].setub(1e7)
+
 
     m.fs.h2_turbine.turbine.deltaP.fix(-compressor_dp * 1e5)
-    m.fs.h2_turbine.turbine.efficiency_isentropic.fix(0.89)
+    m.fs.h2_turbine.turbine.ratioP.unfix()
+    m.fs.h2_turbine.turbine.efficiency_isentropic.fix(0.79)
+    m.fs.h2_turbine.turbine.control_volume.properties_in[0.0].flow_mol_phase['Vap'].setub(1e7)
+    m.fs.h2_turbine.turbine.control_volume.properties_in[0.0].flow_mol.setub(1e7)
+    m.fs.h2_turbine.turbine.control_volume.properties_out[0.0].flow_mol.setub(1e7)
+    m.fs.h2_turbine.turbine.control_volume.properties_out[0.0].flow_mol_phase['Vap'].setub(1e7)
+    m.fs.h2_turbine.turbine.properties_isentropic[0.0].flow_mol_phase['Vap'].setub(1e7)
+    m.fs.h2_turbine.turbine.properties_isentropic[0.0].flow_mol.setub(1e7)
 
     # add operating constraints
+    compressor_loss = 0.05
     m.fs.h2_turbine.electricity = Expression(m.fs.config.time,
-                                             rule=lambda b, t: (-b.turbine.work_mechanical[t] - b.compressor.work_mechanical[t]) * 1e-3)
+                                             rule=lambda b, t: (-b.turbine.work_mechanical[t] * (1 - compressor_loss)) * 1e-3)
+                                            #  rule=lambda b, t: (-b.turbine.work_mechanical[t] - b.compressor.work_mechanical[t]) * 1e-3)
 
     m.fs.mixer_to_turbine = Arc(
         source=m.fs.mixer.outlet,
@@ -392,8 +418,9 @@ def create_model(wind_mw, pem_bar, batt_mw, tank_type, tank_length_m, turb_inlet
     TransformationFactory("network.expand_arcs").apply_to(m)
 
     # Scaling factors, set mostly to 1 for now
-    elec_sf = 1
+    elec_sf = 1e-3
     iscale.set_scaling_factor(m.fs.windpower.electricity, elec_sf)
+    iscale.set_scaling_factor(m.fs.windpower.system_capacity, elec_sf)
     if hasattr(m.fs, "splitter"):
         iscale.set_scaling_factor(m.fs.splitter.electricity, elec_sf)
         iscale.set_scaling_factor(m.fs.splitter.grid_elec, elec_sf)
@@ -406,11 +433,16 @@ def create_model(wind_mw, pem_bar, batt_mw, tank_type, tank_length_m, turb_inlet
         iscale.set_scaling_factor(m.fs.battery.nameplate_energy, elec_sf)
         iscale.set_scaling_factor(m.fs.battery.initial_state_of_charge, elec_sf)
         iscale.set_scaling_factor(m.fs.battery.initial_energy_throughput, elec_sf)
+        iscale.set_scaling_factor(m.fs.battery.energy_throughput, elec_sf)
         iscale.set_scaling_factor(m.fs.battery.state_of_charge, elec_sf)
 
     if hasattr(m.fs, "pem"):
         iscale.set_scaling_factor(m.fs.splitter.pem_elec, elec_sf)
         iscale.set_scaling_factor(m.fs.pem.electricity, elec_sf)
+
+    if hasattr(m.fs, "h2_tank") and hasattr(m.fs.h2_tank, "tank_holdup"):
+        iscale.set_scaling_factor(m.fs.h2_tank.tank_holdup_previous, elec_sf)
+        iscale.set_scaling_factor(m.fs.h2_tank.tank_holdup, elec_sf)
 
     if hasattr(m.fs, "h2_turbine"):
         iscale.set_scaling_factor(m.fs.mixer.minimum_pressure, 1)
