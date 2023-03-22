@@ -21,7 +21,7 @@ import idaes.logger as idaeslog
 from pyomo.util.infeasible import log_infeasible_constraints, log_infeasible_bounds, log_close_to_bounds
 from idaes.apps.grid_integration.multiperiod.multiperiod import MultiPeriodModel
 from dispatches.case_studies.renewables_case.RE_flowsheet import create_model, propagate_state, value, h2_mols_per_kg, PA, battery_ramp_rate
-from dispatches.case_studies.renewables_h2_case.re_h2_parameters import re_h2_parameters, kg_to_tons, n_hrs, re_h2_dir, wind_cfs, wind_gen_pmax
+from dispatches.case_studies.renewables_case.load_parameters import kg_to_tons
 
 
 def wind_battery_hydrogen_variable_pairs(m1, m2):
@@ -597,6 +597,7 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         "annual_revenue": value(m.annual_revenue)
     }
 
+    n_hrs = len(input_params['wind_resource'])
     if input_params['opt_mode'] == 'surrogate':
         peaker_power = [pyo.value(blks[i].peaker_power) for i in range(n_time_points)]
 
@@ -696,22 +697,3 @@ def wind_battery_hydrogen_optimize(n_time_points, input_params, verbose=False, p
         df['Peaker Dispatch CF Month [1]'] = np.repeat(dispatch_cf_month, ts_per_month)
 
     return design_res, df
-
-
-if __name__ == "__main__":
-    re_h2_parameters["pem_cap_cost"] *= 0.1
-    re_h2_parameters["h2_price_per_kg"] = 0
-    re_h2_parameters["turbine_cap_cost"] *= 0.1
-    # re_h2_parameters["batt_cap_cost_kw"] *= 0.1
-    # re_h2_parameters["batt_cap_cost_kwh"] *= 0.1
-    re_h2_parameters["batt_mw"] = 0
-    re_h2_parameters["batt_mwh"] = 0
-    re_h2_parameters["turb_mw"] = 0
-    re_h2_parameters['opt_mode'] = "pricetaker"
-
-    re_h2_parameters["design_opt"] = True
-
-    re_h2_parameters["tank_size"] = re_h2_parameters['turb_mw'] * 1e3 / re_h2_parameters['turb_conv']
-    des_res, df_res = wind_battery_hydrogen_optimize(n_time_points=int(8784/12), input_params=re_h2_parameters, verbose=False, plot=True)
-    df_res.to_parquet(re_h2_dir / "design_results.parquet")
-    print(des_res)
