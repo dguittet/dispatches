@@ -43,6 +43,10 @@ jobs:
             cov-report: true
     steps:
     - uses: actions/checkout@v2
+      with:
+        lfs: true
+    - name: Checkout LFS objects
+      run: git lfs checkout
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
@@ -51,8 +55,9 @@ jobs:
       run: |
         _pip_install="pip install --progress-bar off"
         echo '::group::Output of "pip install" commands'
+        pip install --upgrade pip
         $_pip_install --upgrade pip wheel setuptools
-        $_pip_install -r requirements-dev.txt
+        $_pip_install --no-cache-dir -r requirements-dev.txt
         echo '::endgroup::'
         echo '::group::Display installed packages'
         conda list
