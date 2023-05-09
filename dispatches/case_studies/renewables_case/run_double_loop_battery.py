@@ -13,10 +13,8 @@
 #
 #################################################################################
 from prescient.simulator import Prescient
-from types import ModuleType
 from argparse import ArgumentParser
 from wind_battery_double_loop import MultiPeriodWindBattery
-import idaes
 from idaes.apps.grid_integration import (
     Tracker,
     Bidder,
@@ -31,9 +29,7 @@ from idaes.apps.grid_integration.model_data import (
 from idaes import __version__
 import pyomo.environ as pyo
 from pyomo.common.fileutils import this_file_dir
-import pandas as pd
 from pathlib import Path
-import os
 from dispatches_sample_data import rts_gmlc
 from dispatches.case_studies.renewables_case.double_loop_utils import read_rts_gmlc_wind_inputs
 from dispatches.case_studies.renewables_case.prescient_options import *
@@ -58,7 +54,7 @@ parser.add_argument(
     help="Set wind capacity in MW.",
     action="store",
     type=float,
-    default=200.0,
+    default=847.0,
 )
 
 parser.add_argument(
@@ -117,7 +113,9 @@ wind_df = read_rts_gmlc_wind_inputs(rts_gmlc.source_data_path, wind_generator)
 wind_df = wind_df[wind_df.index >= start_date]
 gen_capacity_factor = wind_df[f"{wind_generator}-RTCF"].values.tolist()
 
-output_dir = Path(f"Benchmark_wind_battery_double_loop_sim_{sim_id}_results")
+# NOTE: `rts_gmlc_data_dir` should point to a directory containing RTS-GMLC scenarios
+rts_gmlc_data_dir = rts_gmlc.source_data_path
+output_dir = Path(f"cbc_run_wind_battery_stochastic_bidder_sim_{sim_id}")
 
 solver = pyo.SolverFactory(solver_name)
 
@@ -139,7 +137,6 @@ if participation_mode == "Bid":
         "include_default_p_cost": False,
         "startup_cost_pairs": [(0, 0)],
         "fixed_commitment": None,
-        "spinning_capacity": 0,                                     # Disable participation in some reserve services
         "non_spinning_capacity": 0,
         "supplemental_spinning_capacity": 0,
         "supplemental_non_spinning_capacity": 0,
@@ -304,5 +301,5 @@ prescient_options["plugin"] = {
 Prescient().simulate(**prescient_options)
 
 # write options into the result folder
-with open(output_dir / "sim_options_battery.txt", "w") as f:
+with open(output_dir / "sim_options_battery_new.txt", "w") as f:
     f.write(str(options))
