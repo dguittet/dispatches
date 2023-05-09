@@ -20,8 +20,10 @@ this_file_path = os.path.dirname(os.path.realpath(__file__))
 def submit_job(
     sim_id,
     wind_pmax,
-    pem_pmax,
-    pem_bid,
+    battery_energy_capacity,
+    battery_pmax,
+    n_scenario,
+    participation_mode,
 ):
 
     # create a directory to save job scripts
@@ -29,29 +31,37 @@ def submit_job(
     if not os.path.isdir(job_scripts_dir):
         os.mkdir(job_scripts_dir)
 
-    file_name = os.path.join(job_scripts_dir, f"new_Benchmark_wind_pem_parameterized_rf_{int(reserve_factor * 1e2)}_shortfall_{shortfall}_rth_{real_time_horizon}.sh")
+    file_name = os.path.join(job_scripts_dir, f"new_Benchmark_wind_battery_stochastic_bidder_rf_{int(reserve_factor * 1e2)}_shortfall_{shortfall}_rth_{real_time_horizon}.sh")
     with open(file_name, "w") as f:
         f.write(
             "#!/bin/bash\n"
             + "#$ -M xchen24@nd.edu\n"
             + "#$ -m ae\n"
             + "#$ -q long\n"
-            + f"#$ -N new_Benchmark_re-wind-pem-parameterized_shortfall_{shortfall}_rth_{real_time_horizon}\n"
+            + f"#$ -N new_Benchmark_re-wind-battery-sb_rf_{int(reserve_factor*100)}_shortfall_{shortfall}_rth_{real_time_horizon}\n"
             + "conda activate regen\n"
             + "export LD_LIBRARY_PATH=~/.conda/envs/regen/lib:$LD_LIBRARY_PATH \n"
-            + "module load ipopt/3.14.2 \n"
-            + "module load ompi/3.0.0/intel/18.0 \n"
-            + "module load intel/18.0 \n"
             + "module load gurobi/9.5.1\n"
-            + f"python ./run_double_loop_PEM.py --sim_id {sim_id} --wind_pmax {wind_pmax} --pem_pmax {pem_pmax} --pem_bid {pem_bid}"
+            + "module load ipopt/3.14.2 \n"
+            + f"python ./run_double_loop_battery_new_setting.py --sim_id {sim_id} --wind_pmax {wind_pmax} --battery_energy_capacity {battery_energy_capacity} --battery_pmax {battery_pmax} --n_scenario {n_scenario} --participation_mode {participation_mode}"
         )
 
     os.system(f"qsub {file_name}")
 
 
-sim_id = 1
-wind_pmax = 847
-pem_pmax = 200
-pem_bid = 25
+if __name__ == "__main__":
 
-submit_job(sim_id, wind_pmax, pem_pmax, pem_bid)
+    sim_id = 0
+
+    wind_pmax = 847
+
+    battery_energy_capacity = 200
+
+    battery_pmax = 50
+
+    n_scenario = 10
+
+    participation_mode = 'Bid'
+
+    submit_job(sim_id, wind_pmax, battery_energy_capacity, battery_pmax, n_scenario, participation_mode)
+    

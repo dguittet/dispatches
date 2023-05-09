@@ -28,7 +28,6 @@ from idaes.apps.grid_integration.model_data import (
 from idaes import __version__
 import pyomo.environ as pyo
 from pyomo.common.fileutils import this_file_dir
-import pandas as pd
 from pathlib import Path
 from dispatches_sample_data import rts_gmlc
 from dispatches.case_studies.renewables_case.double_loop_utils import read_rts_gmlc_wind_inputs
@@ -54,7 +53,7 @@ parser.add_argument(
     help="Set wind capacity in MW.",
     action="store",
     type=float,
-    default=200.0,
+    default=50,
 )
 
 parser.add_argument(
@@ -63,7 +62,7 @@ parser.add_argument(
     help="Set the battery energy capacity in MWh.",
     action="store",
     type=float,
-    default=100.0,
+    default=20.0,
 )
 
 parser.add_argument(
@@ -72,7 +71,7 @@ parser.add_argument(
     help="Set the battery power capacity in MW.",
     action="store",
     type=float,
-    default=25.0,
+    default=5.0,
 )
 
 parser.add_argument(
@@ -82,15 +81,6 @@ parser.add_argument(
     action="store",
     type=int,
     default=3,
-)
-
-parser.add_argument(
-    "--reserve_factor",
-    dest="reserve_factor",
-    help="Set the reserve factor.",
-    action="store",
-    type=float,
-    default=0.0,
 )
 
 parser.add_argument(
@@ -110,7 +100,7 @@ battery_energy_capacity = options.battery_energy_capacity
 battery_pmax = options.battery_pmax
 n_scenario = options.n_scenario
 participation_mode = options.participation_mode
-reserve_factor = options.reserve_factor
+p_min = 0
 
 allowed_participation_modes = {"Bid", "SelfSchedule"}
 if participation_mode not in allowed_participation_modes:
@@ -118,13 +108,13 @@ if participation_mode not in allowed_participation_modes:
         f"The provided participation mode {participation_mode} is not supported."
     )
 
-p_min = 0
-
 wind_df = read_rts_gmlc_wind_inputs(rts_gmlc.source_data_path, wind_generator)
 wind_df = wind_df[wind_df.index >= start_date]
-wind_rt_cfs = wind_df[f"{wind_generator}-RTCF"].values.tolist()
+gen_capacity_factor = wind_df[f"{wind_generator}-RTCF"].values.tolist()
 
-output_dir = Path(f"sim_{sim_id}_results")
+# NOTE: `rts_gmlc_data_dir` should point to a directory containing RTS-GMLC scenarios
+rts_gmlc_data_dir = rts_gmlc.source_data_path
+output_dir = Path(f"Benchmark_wind_battery_double_loop_sim_{sim_id}_results_15_500")
 
 solver = pyo.SolverFactory(solver_name)
 
@@ -136,16 +126,20 @@ if participation_mode == "Bid":
         "p_max": wind_pmax,
         "min_down_time": 0,
         "min_up_time": 0,
-        "ramp_up_60min": wind_pmax + battery_pmax,
-        "ramp_down_60min": wind_pmax + battery_pmax,
-        "shutdown_capacity": wind_pmax + battery_pmax,
-        "startup_capacity": wind_pmax + battery_pmax,
+        "ramp_up_60min": 1000,
+        "ramp_down_60min": 1000,
+        "shutdown_capacity": 1000,
+        "startup_capacity": 1000,
         "initial_status": 1,
         "initial_p_output": 0,
         "production_cost_bid_pairs": [(p_min, 0), (wind_pmax + battery_pmax, 0)],
         "include_default_p_cost": False,
         "startup_cost_pairs": [(0, 0)],
         "fixed_commitment": None,
+        "non_spinning_capacity": 0,
+        "supplemental_spinning_capacity": 0,
+        "supplemental_non_spinning_capacity": 0,
+        "agc_capable": False
     }
     model_data = ThermalGeneratorModelData(**thermal_generator_params)
 elif participation_mode == "SelfSchedule":
@@ -222,7 +216,7 @@ historical_rt_prices = {
 
 mp_wind_battery_bid = MultiPeriodWindBattery(
     model_data=model_data,
-    wind_capacity_factors=wind_rt_cfs,
+    wind_capacity_factors=gen_capacity_factor,
     wind_pmax_mw=wind_pmax,
     battery_pmax_mw=battery_pmax,
     battery_energy_capacity_mwh=battery_energy_capacity,
@@ -255,7 +249,7 @@ elif participation_mode == "SelfSchedule":
 
 mp_wind_battery_track = MultiPeriodWindBattery(
     model_data=model_data,
-    wind_capacity_factors=wind_rt_cfs,
+    wind_capacity_factors=gen_capacity_factor,
     wind_pmax_mw=wind_pmax,
     battery_pmax_mw=battery_pmax,
     battery_energy_capacity_mwh=battery_energy_capacity,
@@ -271,7 +265,7 @@ tracker_object = Tracker(
 
 mp_wind_battery_track_project = MultiPeriodWindBattery(
     model_data=model_data,
-    wind_capacity_factors=wind_rt_cfs,
+    wind_capacity_factors=gen_capacity_factor,
     wind_pmax_mw=wind_pmax,
     battery_pmax_mw=battery_pmax,
     battery_energy_capacity_mwh=battery_energy_capacity,
@@ -306,5 +300,5 @@ prescient_options["plugin"] = {
 Prescient().simulate(**prescient_options)
 
 # write options into the result folder
-with open(output_dir / "sim_options.txt", "w") as f:
+with open(output_dir / "sim_options_battery_new.txt", "w") as f:
     f.write(str(options))

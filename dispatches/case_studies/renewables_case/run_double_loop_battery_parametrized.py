@@ -1,7 +1,7 @@
 #################################################################################
-# DISPATCHES was produced under the DOE Design Integration and Synthesis
-# Platform to Advance Tightly Coupled Hybrid Energy Systems program (DISPATCHES),
-# and is copyright (c) 2022 by the software owners: The Regents of the University
+# DISPATCHES was produced under the DOE Design Integration and Synthesis Platform
+# to Advance Tightly Coupled Hybrid Energy Systems program (DISPATCHES), and is
+# copyright (c) 2020-2023 by the software owners: The Regents of the University
 # of California, through Lawrence Berkeley National Laboratory, National
 # Technology & Engineering Solutions of Sandia, LLC, Alliance for Sustainable
 # Energy, LLC, Battelle Energy Alliance, LLC, University of Notre Dame du Lac, et
@@ -10,7 +10,6 @@
 # Please see the files COPYRIGHT.md and LICENSE.md for full copyright and license
 # information, respectively. Both files are also available online at the URL:
 # "https://github.com/gmlc-dispatches/dispatches".
-#
 #################################################################################
 from prescient.simulator import Prescient
 from types import ModuleType
@@ -109,7 +108,7 @@ thermal_generator_params = {
     "ramp_up_60min": wind_pmax,
     "ramp_down_60min": wind_pmax,
     "shutdown_capacity": wind_pmax,
-    "startup_capacity": 0,
+    "startup_capacity": wind_pmax,
     "initial_status": 1,
     "initial_p_output": 0,
     "production_cost_bid_pairs": [(p_min, 0), (wind_pmax, 0)],
@@ -197,19 +196,6 @@ coordinator = DoubleLoopCoordinator(
     tracker=tracker_object,
     projection_tracker=project_tracker_object,
 )
-
-
-class PrescientPluginModule(ModuleType):
-    def __init__(self, get_configuration, register_plugins):
-        self.get_configuration = get_configuration
-        self.register_plugins = register_plugins
-
-
-plugin_module = PrescientPluginModule(
-    get_configuration=coordinator.get_configuration,
-    register_plugins=coordinator.register_plugins,
-)
-
 
 prescient_options["output_directory"] = output_dir
 prescient_options["plugin"] = {
