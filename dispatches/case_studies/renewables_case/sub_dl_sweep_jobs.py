@@ -42,7 +42,7 @@ if __name__ == "__main__":
 
     sim_id = 0
 
-    wind_pmax_list = list(range(50, 900, 50))
+    wind_pmax_list = list(range(400, 900, 50))
     
     # pmax_ratio: battery_power_pmax/wind_pmax
     pmax_ratio_list = [r/10 for r in range(1, 11, 1)]
