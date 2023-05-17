@@ -12,7 +12,7 @@
 # "https://github.com/gmlc-dispatches/dispatches".
 #################################################################################
 import os
-from prescient_options import reserve_factor, shortfall, real_time_horizon
+from prescient_options import sim_name
 
 this_file_path = os.path.dirname(os.path.realpath(__file__))
 
@@ -31,14 +31,14 @@ def submit_job(
     if not os.path.isdir(job_scripts_dir):
         os.mkdir(job_scripts_dir)
 
-    file_name = os.path.join(job_scripts_dir, f"new_Benchmark_wind_battery_stochastic_bidder_rf_{int(reserve_factor * 1e2)}_shortfall_{shortfall}_rth_{real_time_horizon}.sh")
+    file_name = os.path.join(job_scripts_dir, sim_name + ".sh")
     with open(file_name, "w") as f:
         f.write(
             "#!/bin/bash\n"
             + "#$ -M xchen24@nd.edu\n"
             + "#$ -m ae\n"
             + "#$ -q long\n"
-            + f"#$ -N new_Benchmark_re-wind-battery-sb_rf_{int(reserve_factor*100)}_shortfall_{shortfall}_rth_{real_time_horizon}\n"
+            + "#$ -N " + sim_name + "\n"
             + "conda activate regen\n"
             + "export LD_LIBRARY_PATH=~/.conda/envs/regen/lib:$LD_LIBRARY_PATH \n"
             + "module load gurobi/9.5.1\n"
@@ -53,11 +53,11 @@ if __name__ == "__main__":
 
     sim_id = 0
 
-    wind_pmax = 847
+    wind_pmax = 50
 
-    battery_energy_capacity = 200
+    battery_energy_capacity = 40
 
-    battery_pmax = 50
+    battery_pmax = 10
 
     n_scenario = 10
 

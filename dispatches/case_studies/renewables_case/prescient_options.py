@@ -26,7 +26,8 @@ day_ahead_horizon = 36
 real_time_horizon = 4
 tracking_horizon = 4
 n_tracking_hour = 1
- 
+sim_name = f"test_2_last_days_re_wind_battery_rf_{int(reserve_factor*100)}_shortfall_{shortfall}_rth_{real_time_horizon}"
+
 solvers_list = ["gurobi_direct", "xpress_direct", "cbc"]
 
 opt = False
