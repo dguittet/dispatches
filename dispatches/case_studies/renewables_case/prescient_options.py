@@ -26,7 +26,7 @@ day_ahead_horizon = 36
 real_time_horizon = 4
 tracking_horizon = 4
 n_tracking_hour = 1
-sim_name = f"test_2_last_days_re_wind_battery_rf_{int(reserve_factor*100)}_shortfall_{shortfall}_rth_{real_time_horizon}"
+sim_name = f"test_pandas_re_wind_battery_rf_{int(reserve_factor*100)}_shortfall_{shortfall}_rth_{real_time_horizon}"
 
 solvers_list = ["gurobi_direct", "xpress_direct", "cbc"]
 
@@ -48,6 +48,7 @@ default_prescient_options = {
     "start_date": start_date,
     "num_days": n_days,
     "sced_horizon": real_time_horizon,
+    "run_sced_with_persistent_forecast_errors": True,
     "ruc_mipgap": 0.01,
     "deterministic_ruc_solver": solver_name,
     "deterministic_ruc_solver_options" : {"threads":4, "heurstrategy":2, "cutstrategy":3, "symmetry":2, "maxnode":1000},

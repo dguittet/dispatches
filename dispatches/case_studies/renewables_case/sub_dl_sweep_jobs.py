@@ -18,14 +18,14 @@ def submit_job(
     if not os.path.isdir(job_scripts_dir):
         os.mkdir(job_scripts_dir)
 
-    file_name = os.path.join(job_scripts_dir, f"new_big_re_wind_battery_sweep_sb_sim_{sim_id}.sh")
+    file_name = os.path.join(job_scripts_dir, f"new_fixed_re_wind_battery_sweep_sb_sim_{sim_id}.sh")
     with open(file_name, "w") as f:
         f.write(
             "#!/bin/bash\n"
             + "#$ -M xchen24@nd.edu\n"
             + "#$ -m ae\n"
             + "#$ -q long\n"
-            + f"#$ -N new_big_re_wind_battery_sb_sweep_sim_{sim_id}\n"
+            + f"#$ -N new_fixed_re_wind_battery_sb_sweep_sim_{sim_id}\n"
             + "conda activate regen\n"
             + "export LD_LIBRARY_PATH=~/.conda/envs/regen/lib:$LD_LIBRARY_PATH \n"
             + "module load gurobi/9.5.1\n"
@@ -42,7 +42,7 @@ if __name__ == "__main__":
 
     sim_id = 0
 
-    wind_pmax_list = list(range(400, 900, 50))
+    wind_pmax_list = list(range(50, 900, 50))
     
     # pmax_ratio: battery_power_pmax/wind_pmax
     pmax_ratio_list = [r/10 for r in range(1, 11, 1)]

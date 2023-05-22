@@ -127,9 +127,10 @@ def summarize_revenue(sim_id, result_dir, gen_detail, bus_name, gen_name, cap_rt
  
     df["Revenue DA"] = df["Dispatch DA"] * df["LMP DA"]
     df["Revenue RT"] = (df["Dispatch"] - df["Dispatch DA"]) * df["LMP"]
+    df["Revenue RT only"] = df["LMP"]*df["Dispatch"]
     df["Total Revenue"] = df["Revenue DA"] + df["Revenue RT"]
 
-    df = df[["Dispatch", "Dispatch DA", "Revenue DA", "Revenue RT", "Total Revenue"]]
+    df = df[["Dispatch", "Dispatch DA", "Revenue DA", "Revenue RT", "Revenue RT only", "Total Revenue"]]
 
     summary = df.sum().to_dict()
     summary["sim_id"] = sim_id
@@ -163,9 +164,10 @@ def summarize_in_df(result_dir, gen_detail, bus_name, gen_name):
 
     df["Revenue DA"] = df["Dispatch DA"] * df["LMP DA"]
     df["Revenue RT"] = (df["Dispatch"] - df["Dispatch DA"]) * df["LMP"]
+    df["Revenue RT only"] = df["LMP"]*df["Dispatch"]
     df["Total Revenue"] = df["Revenue DA"] + df["Revenue RT"]
-
-    df = df[["Dispatch", "Dispatch DA", "Revenue DA", "Revenue RT", "Total Revenue"]]
+    
+    df = df[["Dispatch", "Dispatch DA", "Revenue DA", "Revenue RT", "Revenue RT only", "Total Revenue"]]
 
     return df
 
