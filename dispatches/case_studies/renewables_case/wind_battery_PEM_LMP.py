@@ -52,7 +52,12 @@ def wind_battery_pem_om_costs(m):
     """
     m.fs.windpower.op_cost = pyo.Param(
         initialize=wind_op_cost,
-        doc="fixed cost of operating wind plant $/kW-yr")
+        doc="fixed cost of operating wind plant $/kW-yr"
+    )
+    m.fs.battery.op_cost = pyo.Param(
+        initialize=batt_op_cost,
+        doc="fixed cost of operating 4-hr battery $/kW-yr"
+    )
     m.fs.pem.op_cost = pyo.Param(
         initialize=pem_op_cost,
         doc="fixed cost of operating pem $/kW-yr"
@@ -237,7 +242,8 @@ def wind_battery_pem_optimize(time_points, input_params=default_input_params, ve
 
     m.wind_cap_cost = pyo.Param(default=wind_cap_cost, mutable=True)
     m.pem_cap_cost = pyo.Param(default=pem_cap_cost, mutable=True)
-    m.batt_cap_cost = pyo.Param(default=batt_cap_cost, mutable=True)
+    m.batt_cap_cost_kw = pyo.Param(default=batt_cap_cost_kw, mutable=True)
+    m.batt_cap_cost_kwh = pyo.Param(default=batt_cap_cost_kwh, mutable=True)
 
     # if wind farm exist already, size is fixed and don't charge the capital cost
     if input_params['extant_wind']:
@@ -251,9 +257,11 @@ def wind_battery_pem_optimize(time_points, input_params=default_input_params, ve
 
         # add operating costs
         blk_wind.op_total_cost = Expression(
-            expr=blk_wind.system_capacity * blk_wind.op_cost / 8760
+            expr=m.wind_system_capacity * blk_wind.op_cost / 8760
         )
-
+        blk_battery.op_total_cost = Expression(
+            expr=m.battery_system_capacity * blk_battery.op_cost / 8760
+        )
         blk_pem.op_total_cost = Expression(
             expr=m.pem_system_capacity * blk_pem.op_cost / 8760 + blk_pem.var_cost * blk_pem.electricity[0],
         )
@@ -261,7 +269,7 @@ def wind_battery_pem_optimize(time_points, input_params=default_input_params, ve
         # add market data for each block
         blk.lmp_signal = pyo.Param(default=0, mutable=True)
         blk.revenue = blk.lmp_signal * (blk.fs.splitter.grid_elec[0] + blk_battery.elec_out[0]) * 1e-3    # to $/kWh
-        blk.profit = pyo.Expression(expr=blk.revenue - blk_wind.op_total_cost - blk_pem.op_total_cost)
+        blk.profit = pyo.Expression(expr=blk.revenue - blk_wind.op_total_cost - blk_pem.op_total_cost - blk_battery.op_total_cost)
         blk.hydrogen_revenue = Expression(expr=m.h2_price_per_kg * blk_pem.outlet.flow_mol[0] / h2_mols_per_kg * 3600)
 
     for (i, blk) in enumerate(blks):
@@ -272,7 +280,8 @@ def wind_battery_pem_optimize(time_points, input_params=default_input_params, ve
     m.annual_revenue = Expression(expr=(sum([blk.profit + blk.hydrogen_revenue for blk in blks])) * 52 / n_weeks)
 
     m.NPV = Expression(expr=-(m.wind_cap_cost * m.wind_system_capacity +
-                              m.batt_cap_cost * m.battery_system_capacity +
+                              m.batt_cap_cost_kw * m.battery_system_capacity +
+                              m.batt_cap_cost_kwh * m.battery_system_capacity * 4 +       # 4-hr battery
                               m.pem_cap_cost * m.pem_system_capacity) + PA * m.annual_revenue)
     m.obj = pyo.Objective(expr=-m.NPV * 1e-5)
 

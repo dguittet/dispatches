@@ -46,6 +46,10 @@ from dispatches.case_studies.renewables_case.wind_battery_PEM_LMP import wind_ba
                                 initialize_mp, wind_battery_pem_model, wind_battery_pem_mp_block
 
 
+# RT market only or Both RT and DA markets
+rt_market_only = True
+include_wind_capital_cost = True
+
 # path for folder that has surrogate models
 re_nn_dir = Path(__file__).parent / "data" / "steady_state_surrogate"
 
@@ -58,16 +62,21 @@ def load_surrogate_model(re_nn_dir):
     pem_clusters_mean = centers[:, 1]
     resource_clusters_mean = centers[:, 2]
 
-    with open(re_nn_dir / "revenue" / "RE_revenue_params_2_25.json", 'rb') as f:
-        rev_data = json.load(f)
-
     # load keras neural networks
     # Input variables are PEM bid price, PEM MW, Reserve Factor and Load Shed Price
-    nn_rev = keras.models.load_model(re_nn_dir / "revenue" / "RE_revenue_2_25")
-    nn_dispatch = keras.models.load_model(re_nn_dir / "dispatch_frequency" / "ss_surrogate_model_wind_pmax")
-
     with open(re_nn_dir / "dispatch_frequency" / "ss_surrogate_param_wind_pmax.json", 'r') as f:
         dispatch_data = json.load(f)
+    nn_dispatch = keras.models.load_model(re_nn_dir / "dispatch_frequency" / "ss_surrogate_model_wind_pmax")
+
+    if rt_market_only:
+        rev_data_f = re_nn_dir / "rt_revenue" / "RE_RT_revenue_params_2_25.json"
+        nn_rev = keras.models.load_model(re_nn_dir / "rt_revenue" / "RE_RT_revenue_2_25")
+    else:
+        rev_data_f = re_nn_dir / "revenue" / "RE_revenue_params_2_25.json"
+        nn_rev = keras.models.load_model(re_nn_dir / "revenue" / "RE_revenue_2_25")
+
+    with open(rev_data_f, 'rb') as f:
+        rev_data = json.load(f)
 
     # load keras models and create OMLT NetworkDefinition objects
     #Revenue model definition
@@ -315,7 +324,7 @@ default_input_params = {
     "design_opt": True,
     "extant_wind": True,        # fixed because parameter sweeps didn't change wind size
 
-    "wind_cap_cost": wind_cap_cost,
+    "wind_cap_cost": wind_cap_cost if include_wind_capital_cost else 0,
     "wind_op_cost": wind_op_cost,
     "pem_cap_cost": pem_cap_cost,
     "pem_op_cost": pem_op_cost,
@@ -338,4 +347,4 @@ if __name__ == "__main__":
         res = p.starmap(run_design, inputs)
 
     df = pd.DataFrame(res)
-    df.to_csv("surrogate_results_ss.csv")
+    df.to_csv("surrogate_results_ss_rt.csv")
