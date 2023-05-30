@@ -201,6 +201,10 @@ def conceptual_design_dynamic_RE(input_params, num_rep_days, PEM_bid=None, PEM_M
         scenario_model.pem_max_p = Constraint(scenario_model.TIME, 
             rule=lambda b, t: blks[t].fs.pem.electricity[0] <= m.pem_system_capacity)
 
+        # This constraint requires the pem electricity = wind_generated - dispatched.
+        scenario_model.pem_usage = Constraint(scenario_model.TIME,
+            rule=lambda b, t: blks[t].fs.pem.electricity[0] == max(0, clustered_wind_resource[t]-clustered_capacity_factors[t]))
+
         scenario_model.dispatch_frequency = Expression(expr=m.dispatch_surrogate[i])
 
         scenario_model.hydrogen_produced = Expression(scenario_model.TIME,
