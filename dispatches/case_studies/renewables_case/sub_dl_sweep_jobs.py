@@ -40,9 +40,9 @@ if __name__ == "__main__":
     
     from itertools import product
 
-    sim_id = 0
+    sim_id = 50
 
-    wind_pmax_list = list(range(50, 900, 50))
+    wind_pmax_list = list(range(300, 900, 50))
     
     # pmax_ratio: battery_power_pmax/wind_pmax
     pmax_ratio_list = [r/10 for r in range(1, 11, 1)]

@@ -61,11 +61,21 @@ def wind_battery_om_costs(m):
         expr=m.fs.windpower.system_capacity * m.fs.windpower.op_cost / 8760,
         doc="total fixed cost of wind in $/hr",
     )
-    m.fs.battery.var_cost = pyo.Expression(
-        expr=m.fs.battery.degradation_rate * (m.fs.battery.energy_throughput[0] - m.fs.battery.initial_energy_throughput) * batt_rep_cost_kwh,
-        doc="variable operating of the battery $/kWh"
+
+    # do not use this battery var cost, use the om cost the same as wind
+    # m.fs.battery.var_cost = pyo.Expression(
+    #     expr=m.fs.battery.degradation_rate * (m.fs.battery.energy_throughput[0] - m.fs.battery.initial_energy_throughput) * batt_rep_cost_kwh,
+    #     doc="variable operating of the battery $/kWh"
+    # )
+
+    m.fs.battery.op_cost = pyo.Param(
+        initialize=batt_op_cost, doc="fixed cost of operating battery $/kW-yr"
     )
 
+    m.fs.battery.op_total_cost = pyo.Param(
+        expr = m.fs.battery.nameplate_power*m.fs.battery.op_cost / 8760,
+        doc="total fixed cost of battery in $/hr"
+    )
 
 def initialize_mp(m, verbose=False):
     """
@@ -231,7 +241,7 @@ def wind_battery_optimize(n_time_points, input_params, verbose=False):
         )
         blk.profit = pyo.Expression(expr=blk.revenue 
                                          - blk_wind.op_total_cost
-                                         - blk_battery.var_cost)
+                                         - blk_battery.op_total_cost)
 
     for (i, blk) in enumerate(blks):
         blk.lmp_signal.set_value(input_params['DA_LMPs'][i] * 1e-3) 
@@ -242,6 +252,7 @@ def wind_battery_optimize(n_time_points, input_params, verbose=False):
     m.batt_cap_cost = pyo.Param(default=batt_cap_cost, mutable=True)
 
     n_weeks = n_time_points / (7 * 24)
+    m.annual_elec_revenue = Expression(expr = sum([blk.revenue for blk in blks])* 52 / n_weeks)
     m.annual_revenue = Expression(expr=sum([blk.profit for blk in blks]) * 52 / n_weeks)
     m.NPV = Expression(
         expr=-(
@@ -252,7 +263,8 @@ def wind_battery_optimize(n_time_points, input_params, verbose=False):
     )
     m.obj = pyo.Objective(expr=-m.NPV * 1e-5)
 
-    opt = pyo.SolverFactory("cbc")
+    opt = pyo.SolverFactory("ipopt")
+    opt.options["max_iter"] = 6000
     opt.solve(m, tee=verbose)
 
     return mp_wind_battery

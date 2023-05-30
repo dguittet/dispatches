@@ -12,6 +12,7 @@
 # "https://github.com/gmlc-dispatches/dispatches".
 #################################################################################
 import multiprocessing as mp
+from argparse import ArgumentParser
 import pyomo.environ as pyo
 from itertools import product
 import os
@@ -23,6 +24,20 @@ import numpy as np
 from dispatches.case_studies.renewables_case.wind_battery_LMP import wind_battery_optimize
 from dispatches.case_studies.renewables_case.RE_flowsheet import default_input_params, market
 
+usage = "Run pricetaker optimization with battery size and duration."
+parser = ArgumentParser(usage)
+
+parser.add_argument(
+    "--battery_ratio",
+    dest="battery_ratio",
+    help="Indicate the battery ratio to the wind farm.",
+    action="store",
+    type=float,
+    default=0.1,
+)
+
+options = parser.parse_args()
+battery_ratio = options.battery_ratio
 
 lmps_df = pd.read_parquet(Path(__file__).parent / "data" / "303_LMPs_15_reserve_500_shortfall.parquet")
 default_input_params['DA_LMPs'] = lmps_df['LMP DA'].values
@@ -41,8 +56,8 @@ def run_design(wind_size, battery_ratio):
     input_params["wind_mw"] = wind_size
     input_params["batt_mw"] = battery_ratio*wind_size
     input_params["tank_size"] = 0
-    if (file_dir / f"result_{market}_wind_{wind_size}_battery_{battery_ratio}.json").exists():
-        with open(file_dir / f"result_{market}_wind_{wind_size}_battery_{battery_ratio}.json", 'r') as f:
+    if (file_dir / f"result_{market}_wind_{wind_size}_battery_{battery_ratio}_hour_4.json").exists():
+        with open(file_dir / f"result_{market}_wind_{wind_size}_battery_{battery_ratio}_hour_4.json", 'r') as f:
             res = json.load(f)
         res = {**input_params, **res}
         res.pop("DA_LMPs")
@@ -65,14 +80,15 @@ def run_design(wind_size, battery_ratio):
     res.pop("extant_wind")
     res.pop("wind_resource")
     res.pop("pyo_model")
-    with open(file_dir / f"result_{market}_wind_{wind_size}_battery_{battery_ratio}.json", 'w') as f:
+    with open(file_dir / f"result_{market}_wind_{wind_size}_battery_{battery_ratio}_hour_4.json", 'w') as f:
         json.dump(res, f)
     print(f"Finished: {wind_size} {battery_ratio}")
     print(pyo.value(des_res.wind_cap_cost))
     print(pyo.value(des_res.battery_system_capacity))
     return res
 
-run_design(847, 0.1)
+run_design(847, battery_ratio)
+
 # exit()
 
 # print(f"Writing to 'design_{market}_{build_add_wind}_results.csv'")

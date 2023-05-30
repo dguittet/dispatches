@@ -127,10 +127,9 @@ def summarize_revenue(sim_id, result_dir, gen_detail, bus_name, gen_name, cap_rt
  
     df["Revenue DA"] = df["Dispatch DA"] * df["LMP DA"]
     df["Revenue RT"] = (df["Dispatch"] - df["Dispatch DA"]) * df["LMP"]
-    df["Revenue RT only"] = df["LMP"]*df["Dispatch"]
     df["Total Revenue"] = df["Revenue DA"] + df["Revenue RT"]
 
-    df = df[["Dispatch", "Dispatch DA", "Revenue DA", "Revenue RT", "Revenue RT only", "Total Revenue"]]
+    df = df[["Dispatch", "Dispatch DA", "Revenue DA", "Revenue RT", "Total Revenue"]]
 
     summary = df.sum().to_dict()
     summary["sim_id"] = sim_id
@@ -164,10 +163,9 @@ def summarize_in_df(result_dir, gen_detail, bus_name, gen_name):
 
     df["Revenue DA"] = df["Dispatch DA"] * df["LMP DA"]
     df["Revenue RT"] = (df["Dispatch"] - df["Dispatch DA"]) * df["LMP"]
-    df["Revenue RT only"] = df["LMP"]*df["Dispatch"]
     df["Total Revenue"] = df["Revenue DA"] + df["Revenue RT"]
-    
-    df = df[["Dispatch", "Dispatch DA", "Revenue DA", "Revenue RT", "Revenue RT only", "Total Revenue"]]
+
+    df = df[["Dispatch", "Dispatch DA", "Revenue DA", "Revenue RT", "Total Revenue"]]
 
     return df
 
@@ -208,12 +206,45 @@ def summarize_H2_revenue(df, PEM_size, H2_price, gen_name):
     return df_H2
 
 
+def calculate_NPV(annual_revenue, wind_size, battery_size, scenario, discount_rate = 0.05, OM_cost = False):
+    discount_rate = discount_rate               # discount rate
+    N = 30                                      # years
+    PA = ((1+discount_rate)**N - 1)/(discount_rate*(1+discount_rate)**N) 
+
+    NPV_params = {}
+    # moderate scenario
+    # NPV_params[2023] = {"wind_cap_cost": 1308.4, "wind_op_cost": 41.8, "batt_cap_cost": 1255.7, "batt_op_cost": 31.4}
+    # NPV_params[2030] = {"wind_cap_cost": 950, "wind_op_cost": 38.9, "batt_cap_cost": 894.7, "batt_op_cost": 24.2}
+    # NPV_params[2040] = {"wind_cap_cost": 855, "wind_op_cost": 36, "batt_cap_cost": 783.3, "batt_op_cost": 19.6}
+    # NPV_params[2050] = {"wind_cap_cost": 760, "wind_op_cost": 33.1, "batt_cap_cost": 671.5, "batt_op_cost": 16.8}
+
+    # advanced scenario
+    NPV_params[2023] = {"wind_cap_cost": 1233.4, "wind_op_cost": 40.4, "batt_cap_cost": 1240.3, "batt_op_cost": 31.0}
+    NPV_params[2030] = {"wind_cap_cost": 700.0, "wind_op_cost": 34.4, "batt_cap_cost": 680.0, "batt_op_cost": 17.0}
+    NPV_params[2040] = {"wind_cap_cost": 612.5, "wind_op_cost": 29.2, "batt_cap_cost": 595.0, "batt_op_cost": 14.9}
+    NPV_params[2050] = {"wind_cap_cost": 525.0, "wind_op_cost": 24.1, "batt_cap_cost": 510.0, "batt_op_cost": 12.8}
+
+    wind_cap_cost = NPV_params[scenario]["wind_cap_cost"]    # $/kWh
+    wind_op_cost = NPV_params[scenario]["wind_op_cost"]    # $/kW
+    batt_cap_cost = NPV_params[scenario]["batt_cap_cost"]    # $/kW
+    battery_op_cost = NPV_params[scenario]["batt_op_cost"]    # # $/kW
+
+    capital_cost_wind = wind_cap_cost*wind_size*1000
+    capital_cost_battery = batt_cap_cost*battery_size*1000
+    op_cost = wind_op_cost*wind_size*1000 + battery_size*battery_op_cost*1000
+
+    if OM_cost:
+        NPV = (annual_revenue - op_cost)*PA - capital_cost_wind - capital_cost_battery
+    else:
+        NPV = annual_revenue * PA - capital_cost_wind - capital_cost_battery
+    
+    return NPV
 # base_directory = "new_Benchmark_single_wind_gen_sim_15_200_rth_4"
 # base_directory = "new_Benchmark_wind_pem_parametrized_rf_0.15_shortfall_200_rth_1"
 # base_directory = "new_Benchmark_wind_battery_stochastic_bidder_rf_0.15_shortfall_200_rth_4"
 # base_directory = "new_Benchmark_wind_battery_parametrized_bidder_fix_commitment_rf_0.15_shortfall_200_rth_1"
 
-base_directory = "new_wind_battery_sweep_small/Sweep_run_wind_battery_stochastic_bidder_sim_"
+base_directory = "new_fixed_wind_battery_sweep_sb/Sweep_run_wind_battery_stochastic_bidder_sim_0"
 generator_name = "303_WIND_1"
 bus_name = "Caesar"
 gen_detail = "thermal_detail.csv"
@@ -221,8 +252,8 @@ gen_detail = "thermal_detail.csv"
 # H2_price = 1.25 # $/kg
 
 # # Want hourly dispatch and LMP data
-# output_directory = os.getcwd()
-# summarize_results(base_directory, generator_name, bus_name, output_directory)
+output_directory = os.getcwd()
+summarize_results(base_directory, generator_name, bus_name, output_directory)
 
 # Want a total revenue and dispatch summary
 # for i in range(3,10):
@@ -237,27 +268,27 @@ gen_detail = "thermal_detail.csv"
 # result = summarize_H2_revenue(df, PEM_size, H2_price, generator_name)
 # print(result)
 
-def main():
-    gen_detail = "thermal_detail.csv"
-    generator_name = "303_WIND_1"
-    bus_name = "Caesar"
-    folder_path = "new_wind_battery_sweep_sb_big"
-    # get the list of folder names that stores the simulation results
-    file_list = os.listdir(folder_path)
-    # a dictionary that is going to save the simulation revenue results
-    result_dict = {}
-    for name in file_list:
-        # split the name and take the last value, which is the sim_id.
-        sim_path = os.path.join(folder_path, name)
-        sim_id = int(re.split("_", name)[-1])
-        res = summarize_revenue(sim_id, sim_path, gen_detail, bus_name, generator_name, cap_rt_lmp = True)
-        result_dict[sim_id] = res
+# def main():
+#     gen_detail = "thermal_detail.csv"
+#     generator_name = "303_WIND_1"
+#     bus_name = "Caesar"
+#     folder_path = "new_wind_battery_sweep_sb_small"
+#     # get the list of folder names that stores the simulation results
+#     file_list = os.listdir(folder_path)
+#     # a dictionary that is going to save the simulation revenue results
+#     result_dict = {}
+#     for name in file_list:
+#         # split the name and take the last value, which is the sim_id.
+#         sim_path = os.path.join(folder_path, name)
+#         sim_id = int(re.split("_", name)[-1])
+#         res = summarize_revenue(sim_id, sim_path, gen_detail, bus_name, generator_name, cap_rt_lmp = True)
+#         result_dict[sim_id] = res
     
-    with open (folder_path + 'cap_rt_lmp_summary', "w") as f:
-        json.dump(result_dict, f)
+#     with open (folder_path + 'cap_rt_lmp_summary', "w") as f:
+#         json.dump(result_dict, f)
     
-    return result_dict
+#     return result_dict
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
