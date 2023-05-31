@@ -36,28 +36,39 @@ parser.add_argument(
     default=0.1,
 )
 
+parser.add_argument(
+    "--duration",
+    dest="duration",
+    help="the battery duration hours",
+    action="store",
+    type=int,
+    default=4,
+)
+
+
 options = parser.parse_args()
 battery_ratio = options.battery_ratio
+duration = options.duration
 
 lmps_df = pd.read_parquet(Path(__file__).parent / "data" / "303_LMPs_15_reserve_500_shortfall.parquet")
 default_input_params['DA_LMPs'] = lmps_df['LMP DA'].values
 
 # TempfileManager.tempdir = '/tmp/scratch'
-file_dir = Path(__file__).parent / "wind_battery_pricetaker"
+file_dir = Path(__file__).parent / "wind_battery_pricetaker_2050"
 if not file_dir.exists():
     os.mkdir(file_dir)
 
 build_add_wind = True # if False, wind size is fixed. Either way, all wind capacity is part of capital cost
 
-def run_design(wind_size, battery_ratio):
+def run_design(wind_size, battery_ratio, duration = 4):
     input_params = default_input_params.copy()
     input_params["design_opt"] = False
     input_params["extant_wind"] = True
     input_params["wind_mw"] = wind_size
     input_params["batt_mw"] = battery_ratio*wind_size
     input_params["tank_size"] = 0
-    if (file_dir / f"result_{market}_wind_{wind_size}_battery_{battery_ratio}_hour_4.json").exists():
-        with open(file_dir / f"result_{market}_wind_{wind_size}_battery_{battery_ratio}_hour_4.json", 'r') as f:
+    if (file_dir / f"result_{market}_wind_{wind_size}_battery_{battery_ratio}_hour_{duration}.json").exists():
+        with open(file_dir / f"result_{market}_wind_{wind_size}_battery_{battery_ratio}_hour_{duration}.json", 'r') as f:
             res = json.load(f)
         res = {**input_params, **res}
         res.pop("DA_LMPs")
@@ -80,14 +91,14 @@ def run_design(wind_size, battery_ratio):
     res.pop("extant_wind")
     res.pop("wind_resource")
     res.pop("pyo_model")
-    with open(file_dir / f"result_{market}_wind_{wind_size}_battery_{battery_ratio}_hour_4.json", 'w') as f:
+    with open(file_dir / f"result_{market}_wind_{wind_size}_battery_{battery_ratio}_hour_{duration}.json", 'w') as f:
         json.dump(res, f)
     print(f"Finished: {wind_size} {battery_ratio}")
     print(pyo.value(des_res.wind_cap_cost))
     print(pyo.value(des_res.battery_system_capacity))
     return res
 
-run_design(847, battery_ratio)
+run_design(847, battery_ratio, duration)
 
 # exit()
 

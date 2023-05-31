@@ -19,7 +19,10 @@ this_file_path = os.path.dirname(os.path.realpath(__file__))
 
 
 def submit_job(
-    battery_ratio
+    battery_ratio,
+    year,
+    scenario,
+    battery_duration
 ):
 
     # create a directory to save job scripts
@@ -27,27 +30,31 @@ def submit_job(
     if not os.path.isdir(job_scripts_dir):
         os.mkdir(job_scripts_dir)
 
-    file_name = os.path.join(job_scripts_dir, sim_name + ".sh")
+    file_name = os.path.join(job_scripts_dir, f"{scenario}_{year}_wind_battery_size_duration_{battery_duration}_ratio_{battery_ratio}"  + ".sh")
     with open(file_name, "w") as f:
         f.write(
             "#!/bin/bash\n"
             + "#$ -M xchen24@nd.edu\n"
             + "#$ -m ae\n"
             + "#$ -q long\n"
-            + "#$ -N " + f"wind_battery_size_duration_4_ratio_{battery_ratio}" + "\n"
+            + "#$ -N " + f"{scenario}_{year}_wind_battery_size_duration_{battery_duration}_ratio_{battery_ratio}" + "\n"
             + "conda activate regen\n"
             + "export LD_LIBRARY_PATH=~/.conda/envs/regen/lib:$LD_LIBRARY_PATH \n"
             + "module load gurobi/9.5.1\n"
             + "module load ipopt/3.14.2 \n"
-            + f"python ./run_pricetaker_battery_ratio_size.py --battery_ratio {battery_ratio}"
+            + f"python ./run_pricetaker_battery_ratio_size.py --battery_ratio {battery_ratio}  --duration {battery_duration}"
         )
 
     os.system(f"qsub {file_name}")
 
 
 if __name__ == "__main__":
+    
+    scenario = "moderate"
+    year = "2050"
+    battery_duration = 2
 
     for i in range(1, 11):
         battery_ratio = i/10
-        submit_job(battery_ratio)
+        submit_job(battery_ratio, year, scenario, battery_duration)
     
