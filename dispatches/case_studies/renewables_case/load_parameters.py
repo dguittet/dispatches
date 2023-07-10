@@ -33,7 +33,7 @@ with open("wind_battery_cost_parameter.json", "rb") as f:
 # only need to change the year and scenario here
 year = 2050
 scenario = "moderate"
-duration = 2
+duration = 4
 duration_list = [2, 4, 6, 8, 10] 
 arg_duration = int(duration/2 - 1)
 
@@ -43,11 +43,6 @@ batt_cap_cost_kwh = price_dict["battery"]["batt_cap_cost_param"][scenario][str(y
 
 wind_cap_cost = price_dict["wind"]["capital"][scenario][str(year)][0]
 wind_op_cost = price_dict["wind"]["fixed_om"][scenario][str(year)][0]
-# print(batt_op_cost)
-# print(batt_cap_cost_kw)
-# print(batt_cap_cost_kwh)
-# print(wind_cap_cost)
-# print(wind_op_cost)
 
 # costs in per kW unless specified otherwise
 # wind_cap_cost = 1308                        

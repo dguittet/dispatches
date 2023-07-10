@@ -234,6 +234,7 @@ def wind_battery_optimize(n_time_points, input_params, verbose=False):
         )
 
         blk.lmp_signal = pyo.Param(default=0, mutable=True)
+        blk.elec_output = blk.fs.splitter.grid_elec[0] + blk_battery.elec_out[0]
         blk.revenue = (
             blk.lmp_signal * (blk.fs.splitter.grid_elec[0] + blk_battery.elec_out[0])
         )
@@ -251,13 +252,14 @@ def wind_battery_optimize(n_time_points, input_params, verbose=False):
     m.batt_cap_cost_kwh = pyo.Param(default=batt_cap_cost_kwh, mutable=True)
 
     n_weeks = n_time_points / (7 * 24)
+    m.total_elec_output = Expression(expr= sum([blk.elec_output for blk in blks])* 52 / n_weeks)
     m.annual_elec_revenue = Expression(expr = sum([blk.revenue for blk in blks])* 52 / n_weeks)
     m.annual_revenue = Expression(expr=sum([blk.profit for blk in blks]) * 52 / n_weeks)
     m.NPV = Expression(
         expr=-(
             m.wind_cap_cost * m.wind_system_capacity
             + m.batt_cap_cost_kw * m.battery_system_capacity
-            + m.batt_cap_cost_kwh * m.battery_system_capacity * 4      # 4-hr battery
+            + m.batt_cap_cost_kwh * m.battery_system_capacity * duration      # duration-hr battery
         )
         + PA * m.annual_revenue
     )

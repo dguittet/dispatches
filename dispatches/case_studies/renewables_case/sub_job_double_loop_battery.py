@@ -13,6 +13,7 @@
 #################################################################################
 import os
 from prescient_options import sim_name
+from load_parameters import duration
 
 this_file_path = os.path.dirname(os.path.realpath(__file__))
 
@@ -31,14 +32,14 @@ def submit_job(
     if not os.path.isdir(job_scripts_dir):
         os.mkdir(job_scripts_dir)
 
-    file_name = os.path.join(job_scripts_dir, sim_name + ".sh")
+    file_name = os.path.join(job_scripts_dir, sim_name + f"rerun_ratio_{battery_pmax/wind_pmax}"  + ".sh")
     with open(file_name, "w") as f:
         f.write(
             "#!/bin/bash\n"
             + "#$ -M xchen24@nd.edu\n"
             + "#$ -m ae\n"
             + "#$ -q long\n"
-            + "#$ -N " + sim_name + "\n"
+            + "#$ -N " + sim_name + f"rerun_ratio_{battery_pmax/wind_pmax}" + "\n"
             + "conda activate regen\n"
             + "export LD_LIBRARY_PATH=~/.conda/envs/regen/lib:$LD_LIBRARY_PATH \n"
             + "module load gurobi/9.5.1\n"
@@ -50,18 +51,20 @@ def submit_job(
 
 
 if __name__ == "__main__":
+ 
+    sim_id = 9
 
-    sim_id = 0
+    wind_pmax = 847
 
-    wind_pmax = 50
-
-    battery_energy_capacity = 40
-
-    battery_pmax = 10
+    battery_pmax_ratio = list(i/10 for i in range(1,11,1))
 
     n_scenario = 10
 
     participation_mode = 'Bid'
-
-    submit_job(sim_id, wind_pmax, battery_energy_capacity, battery_pmax, n_scenario, participation_mode)
     
+    ratio =  0.9 
+#    for r in battery_pmax_ratio:
+    battery_pmax = wind_pmax*ratio
+    battery_energy_capacity = wind_pmax*ratio*duration
+    submit_job(sim_id, wind_pmax, battery_energy_capacity, battery_pmax, n_scenario, participation_mode)
+#    sim_id += 1

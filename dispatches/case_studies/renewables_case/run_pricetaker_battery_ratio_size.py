@@ -45,16 +45,27 @@ parser.add_argument(
     default=4,
 )
 
+parser.add_argument(
+    "--year",
+    dest="year",
+    help="The year of the capital and OM cost price we are using.",
+    action="store",
+    type=int,
+    default=2023,
+)
 
 options = parser.parse_args()
 battery_ratio = options.battery_ratio
 duration = options.duration
+year = options.year
 
 lmps_df = pd.read_parquet(Path(__file__).parent / "data" / "303_LMPs_15_reserve_500_shortfall.parquet")
-default_input_params['DA_LMPs'] = lmps_df['LMP DA'].values
+lmps = lmps_df['LMP DA'].values
+lmps[lmps>500] = 500
+default_input_params['DA_LMPs'] = lmps # even we use rt lmp signals, we call it DA_LMPs to simplify the work.
 
 # TempfileManager.tempdir = '/tmp/scratch'
-file_dir = Path(__file__).parent / "wind_battery_pricetaker_2050"
+file_dir = Path(__file__).parent / f"wind_battery_pricetaker_rerun_{year}"
 if not file_dir.exists():
     os.mkdir(file_dir)
 
@@ -85,7 +96,7 @@ def run_design(wind_size, battery_ratio, duration = 4):
         # n_time_points=len(lmps_df), 
         input_params=input_params, verbose=True)
     # res = {**input_params, **des_res[0]}
-    res = {**input_params,"NPV": pyo.value(des_res.NPV), "annual revenue": pyo.value(des_res.annual_revenue)}
+    res = {**input_params,"NPV": pyo.value(des_res.NPV), "annual elec revenue":pyo.value(des_res.annual_elec_revenue), "annual revenue": pyo.value(des_res.annual_revenue), "total elec output": pyo.value(des_res.total_elec_output)}
     res.pop("DA_LMPs")
     res.pop("design_opt")
     res.pop("extant_wind")
