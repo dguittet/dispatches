@@ -30,6 +30,7 @@ n_tracking_hour = 1
 sim_name = f"re_wind_battery_ratio_duration_sweep_duration_{duration}"
  
 solvers_list = ["gurobi_direct", "xpress_direct", "cbc"]
+
 opt = False
 for solver_name in solvers_list:
     if pyo.SolverFactory(solver_name).available(exception_flag=False):
