@@ -105,23 +105,5 @@ def run_design(wind_size, battery_ratio, duration = 4):
     with open(file_dir / f"result_{market}_wind_{wind_size}_battery_{battery_ratio}_hour_{duration}.json", 'w') as f:
         json.dump(res, f)
     print(f"Finished: {wind_size} {battery_ratio}")
-    print(pyo.value(des_res.wind_cap_cost))
-    print(pyo.value(des_res.battery_system_capacity))
+    
     return res
-
-run_design(847, battery_ratio, duration)
-
-# exit()
-
-# print(f"Writing to 'design_{market}_{build_add_wind}_results.csv'")
-# h2_prices = np.linspace(2, 3, 5)
-# pem_ratio = np.append(np.linspace(0, 1, 5), None)
-# # h2_prices = np.flip(h2_prices)
-# # price_cap = np.flip(price_cap)
-# inputs = product(h2_prices, pem_ratio)
-
-# with mp.Pool(processes=2) as p:
-#     res = p.starmap(run_design, inputs)
-
-# df = pd.DataFrame(res)
-# df.to_csv(file_dir / f"design_wind_PEM_results.csv")

@@ -23,11 +23,11 @@ import numpy as np
 from dispatches.case_studies.renewables_case.wind_battery_LMP import wind_battery_optimize
 from dispatches.case_studies.renewables_case.RE_flowsheet import default_input_params, market
 
+# this script is for pricetaker of wind-battery IES. Two design variables are wind farm size and battery Pmax.
 
 lmps_df = pd.read_parquet(Path(__file__).parent / "data" / "303_LMPs_15_reserve_500_shortfall.parquet")
 default_input_params['DA_LMPs'] = lmps_df['LMP DA'].values
 
-# TempfileManager.tempdir = '/tmp/scratch'
 file_dir = Path(__file__).parent / "wind_battery_pricetaker"
 if not file_dir.exists():
     os.mkdir(file_dir)
@@ -56,9 +56,7 @@ def run_design(wind_size, battery_ratio):
     print(f"Running: {wind_size} {battery_ratio} {build_add_wind}")
     des_res = wind_battery_optimize(
         n_time_points=8736, 
-        # n_time_points=len(lmps_df), 
         input_params=input_params, verbose=True)
-    # res = {**input_params, **des_res[0]}
     res = {**input_params,"NPV": pyo.value(des_res.NPV), "annual revenue": pyo.value(des_res.annual_revenue)}
     res.pop("DA_LMPs")
     res.pop("design_opt")
@@ -68,22 +66,5 @@ def run_design(wind_size, battery_ratio):
     with open(file_dir / f"result_{market}_wind_{wind_size}_battery_{battery_ratio}.json", 'w') as f:
         json.dump(res, f)
     print(f"Finished: {wind_size} {battery_ratio}")
-    print(pyo.value(des_res.wind_cap_cost))
-    print(pyo.value(des_res.battery_system_capacity))
+
     return res
-
-run_design(847, 0.1)
-# exit()
-
-# print(f"Writing to 'design_{market}_{build_add_wind}_results.csv'")
-# h2_prices = np.linspace(2, 3, 5)
-# pem_ratio = np.append(np.linspace(0, 1, 5), None)
-# # h2_prices = np.flip(h2_prices)
-# # price_cap = np.flip(price_cap)
-# inputs = product(h2_prices, pem_ratio)
-
-# with mp.Pool(processes=2) as p:
-#     res = p.starmap(run_design, inputs)
-
-# df = pd.DataFrame(res)
-# df.to_csv(file_dir / f"design_wind_PEM_results.csv")
