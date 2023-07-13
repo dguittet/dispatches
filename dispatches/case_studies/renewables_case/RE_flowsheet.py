@@ -64,7 +64,6 @@ import matplotlib as mpl
 mpl.use(mpl.rcParams['backend'])
 import logging
 logging.getLogger('pyomo.repn.plugins.nl_writer').setLevel(logging.ERROR)
-from load_parameters import duration
 
 def add_wind(m, wind_mw, wind_resource_config=None):
     """

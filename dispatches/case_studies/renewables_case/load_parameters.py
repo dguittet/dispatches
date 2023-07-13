@@ -27,7 +27,7 @@ h2_mols_per_kg = 500
 H2_mass = 2.016 / 1000
 kg_to_tons = 0.00110231
 
-with open("wind_battery_cost_parameter.json", "rb") as f:
+with open(re_case_dir/"wind_battery_cost_parameter.json", "rb") as f:
     price_dict = json.load(f)
 
 # only need to change the year and scenario here, default, 2023, moderate, 4hr battery.
@@ -37,20 +37,15 @@ duration = 4
 duration_list = [2, 4, 6, 8, 10] 
 arg_duration = int(duration/2 - 1)
 
-batt_op_cost = price_dict["battery"]["fixed_om"][scenario][str(year)][arg_duration]
-batt_cap_cost_kw = price_dict["battery"]["batt_cap_cost_param"][scenario][str(year)][0]
-batt_cap_cost_kwh = price_dict["battery"]["batt_cap_cost_param"][scenario][str(year)][1]
+batt_op_cost = price_dict["battery"]["fixed_om"][scenario][str(year)][arg_duration]     # per kw-yr for duration-hr battery
+batt_cap_cost_kw = price_dict["battery"]["batt_cap_cost_param"][scenario][str(year)][0]    # per kW for duration-hr battery
+batt_cap_cost_kwh = price_dict["battery"]["batt_cap_cost_param"][scenario][str(year)][1]    # per kW for duration-hr battery
 
-wind_cap_cost = price_dict["wind"]["capital"][scenario][str(year)][0]
-wind_op_cost = price_dict["wind"]["fixed_om"][scenario][str(year)][0]
+wind_cap_cost = price_dict["wind"]["capital"][scenario][str(year)][0]    # per kW
+wind_op_cost = price_dict["wind"]["fixed_om"][scenario][str(year)][0]    # per kW-hr
 
 # costs in per kW unless specified otherwise
-wind_cap_cost = 1308                        
-wind_op_cost = 41.78                        # per kW-hr
-batt_cap_cost_kw = 236.365                  # per kW for 4-hr battery
-batt_cap_cost_kwh = 254.835                 # per kW for 4-hr battery
 batt_rep_cost_kwh = batt_cap_cost_kw * 0.5 / 4 # assume 50% price w/ discounting and 4 hour battery
-batt_op_cost = 31.39                        # per kw-yr for 4-hr battery
 pem_cap_cost = 1630
 pem_op_cost = 47.9
 pem_var_cost = 1.3/1000                     # per kWh

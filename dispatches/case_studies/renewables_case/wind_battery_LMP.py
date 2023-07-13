@@ -239,7 +239,8 @@ def wind_battery_optimize(n_time_points, input_params, verbose=False):
         )
         blk.profit = pyo.Expression(expr=blk.revenue 
                                          - blk_wind.op_total_cost
-                                         - blk_battery.op_total_cost)
+                                         - blk_battery.op_total_cost
+                                         - blk_battery.var_cost)
 
     for (i, blk) in enumerate(blks):
         blk.lmp_signal.set_value(input_params['DA_LMPs'][i] * 1e-3) 
