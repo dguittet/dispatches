@@ -65,6 +65,7 @@ mpl.use(mpl.rcParams['backend'])
 import logging
 logging.getLogger('pyomo.repn.plugins.nl_writer').setLevel(logging.ERROR)
 
+
 def add_wind(m, wind_mw, wind_resource_config=None):
     """
     Adds a wind unit to the flowsheet with a fixed system capacity and that uses resource data to determine the capacity factors

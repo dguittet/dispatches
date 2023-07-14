@@ -65,10 +65,6 @@ def wind_battery_om_costs(m):
         initialize=batt_op_cost,
         doc="fixed cost of operating 4-hr battery $/kW-yr"
     )
-    m.fs.battery.var_cost = pyo.Expression(
-        expr=m.fs.battery.degradation_rate * (m.fs.battery.energy_throughput[0] - m.fs.battery.initial_energy_throughput) * batt_rep_cost_kwh,
-        doc="variable operating of the battery $/kWh"
-    )
 
 
 def initialize_mp(m, verbose=False):
@@ -239,8 +235,7 @@ def wind_battery_optimize(n_time_points, input_params, verbose=False):
         )
         blk.profit = pyo.Expression(expr=blk.revenue 
                                          - blk_wind.op_total_cost
-                                         - blk_battery.op_total_cost
-                                         - blk_battery.var_cost)
+                                         - blk_battery.op_total_cost)
 
     for (i, blk) in enumerate(blks):
         blk.lmp_signal.set_value(input_params['DA_LMPs'][i] * 1e-3) 
@@ -266,8 +261,6 @@ def wind_battery_optimize(n_time_points, input_params, verbose=False):
     m.obj = pyo.Objective(expr=-m.NPV * 1e-5)
 
     opt = pyo.SolverFactory("cbc")
-#    opt = pyo.SolverFactory("ipopt")
-#    opt.options["max_iter"] = 6000
     opt.solve(m, tee=verbose)
 
     return mp_wind_battery
