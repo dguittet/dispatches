@@ -120,10 +120,10 @@ def test_create_model_PV():
 
 def test_wind_battery_optimize(input_params):
     mp = wind_battery_optimize(n_time_points=7 * 24, input_params=input_params, verbose=True)
-    assert value(mp.pyomo_model.NPV) == pytest.approx(909487324, rel=1e-3)
-    assert value(mp.pyomo_model.annual_revenue) == pytest.approx(61243506.126, rel=1e-3)
+    assert value(mp.pyomo_model.NPV) == pytest.approx(666049365, rel=1e-3)
+    assert value(mp.pyomo_model.annual_revenue) == pytest.approx(59163455, rel=1e-3)
     blks = mp.get_active_process_blocks()
-    assert value(blks[0].fs.battery.nameplate_power) == pytest.approx(25118.701, abs=1)
+    assert value(blks[0].fs.battery.nameplate_power) == pytest.approx(0, abs=1)
     plot_results(*record_results(mp))
 
 

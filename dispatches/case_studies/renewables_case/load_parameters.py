@@ -46,9 +46,9 @@ wind_op_cost = price_dict["wind"]["fixed_om"][scenario][str(year)][0]    # per k
 
 # costs in per kW unless specified otherwise
 batt_rep_cost_kwh = batt_cap_cost_kw * 0.5 / 4 # assume 50% price w/ discounting and 4 hour battery
-pem_cap_cost = 1630
-pem_op_cost = 47.9
-pem_var_cost = 1.3/1000                     # per kWh
+pem_cap_cost = 1200
+pem_op_cost = 0.03 * pem_cap_cost
+pem_var_cost = 0                     # per kWh
 tank_cap_cost_per_m3 = 29 * 0.8 * 1000      # per m^3
 tank_cap_cost_per_kg = 29 * 33.5            # per kg
 tank_op_cost = .17 * tank_cap_cost_per_kg   # per kg
