@@ -62,8 +62,8 @@ h2_price_per_kg = 2
 # sizes
 fixed_wind_mw = 847
 wind_mw_ub = 10000
-fixed_batt_mw = 4874
-fixed_pem_mw = 643
+fixed_batt_mw = 100
+fixed_pem_mw = 400
 turb_p_mw = 1
 valve_cv = 0.00001
 fixed_tank_size = 0.5
@@ -116,8 +116,8 @@ wind_capacity_factors = {t:
                                 'capacity_factor': 
                                     [wind_cfs[t]]}} for t in range(n_timesteps)}
 # simple financial assumptions
-discount_rate = 0.05                                    # discount rate
-N = 30                                      # years
+discount_rate = 0.08                                    # discount rate
+N = 30                                                  # years
 PA = ((1+discount_rate)**N - 1)/(discount_rate*(1+discount_rate)**N)            # present value / annuity = 1 / CRF
 
 default_input_params = {
